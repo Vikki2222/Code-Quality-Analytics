@@ -7,6 +7,9 @@ const helmet = require('helmet');
 const passport = require('./config/passport');
 const authRoutes = require('./routes/auth.routes');
 const githubRoutes = require('./routes/github.routes');
+const reviewRoutes = require('./routes/review.routes');
+const analyticsRoutes = require('./routes/analytics.routes');
+const webhookRoutes = require('./routes/webhook.routes');
 
 const app = express();
 
@@ -17,6 +20,8 @@ app.use(
     credentials: true, // required so the session cookie is sent cross-origin
   })
 );
+app.use('/api/webhooks', webhookRoutes);
+
 app.use(express.json());
 
 // NOTE: MemoryStore (express-session default) is fine for local dev but
@@ -45,6 +50,8 @@ app.get('/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/github', githubRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Central error handler - keeps error shape consistent and avoids
 // leaking stack traces to the client in production.

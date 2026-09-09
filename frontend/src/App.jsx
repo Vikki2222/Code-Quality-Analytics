@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { api, loginWithGitHub } from './api';
 import FindingsList from './FindingsList';
+import ReviewHistory from './ReviewHistory';
+import AnalyticsDashboard from './Dashboard';
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -69,6 +71,7 @@ function LoginScreen() {
 function Dashboard() {
   const [repos, setRepos] = useState([]);
   const [selectedRepo, setSelectedRepo] = useState(null);
+  const [tab, setTab] = useState('review'); // 'review' | 'history' | 'analytics'
   const [pullRequests, setPullRequests] = useState([]);
   const [selectedPR, setSelectedPR] = useState(null);
   const [review, setReview] = useState(null);
@@ -84,6 +87,7 @@ function Dashboard() {
     setSelectedPR(null);
     setReview(null);
     setError(null);
+    setTab('review');
     const data = await api.getPullRequests(repo.owner, repo.name);
     setPullRequests(data.pullRequests);
   }
@@ -94,7 +98,42 @@ function Dashboard() {
     setError(null);
     setLoading(true);
     try {
-      const result = await api.createReview(selectedRepo.owner, selectedRepo.name, pr.number);
+      const { reviewId } = await api.createReview(selectedRepo.owner, selectedRepo.name, pr.number);
+      await pollReview(reviewId);
+    } catch (err) {
+      setError(err.message);
+      setLoading(false);
+    }
+  }
+
+  async function pollReview(reviewId) {
+    const POLL_INTERVAL_MS = 2000;
+    const MAX_ATTEMPTS = 30;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const result = await api.getReview(reviewId);
+      if (result.status === 'completed') {
+        setReview(result);
+        setLoading(false);
+        return;
+      }
+      if (result.status === 'failed') {
+        setError(result.errorMessage || 'Review failed');
+        setLoading(false);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+    }
+    setError('Review is taking longer than expected. Try refreshing shortly.');
+    setLoading(false);
+  }
+
+  async function viewPastReview(reviewId) {
+    setTab('review');
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.getReview(reviewId);
       setReview(result);
     } catch (err) {
       setError(err.message);
@@ -125,39 +164,78 @@ function Dashboard() {
       </section>
 
       {selectedRepo && (
-        <section className="mt-6">
-          <h2 className="text-sm font-medium text-slate-500 mb-2">Pull requests</h2>
-          {pullRequests.length === 0 ? (
-            <p className="text-sm text-slate-500">No pull requests found in this repository.</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {pullRequests.map((pr) => (
-                <button
-                  key={pr.githubId}
-                  onClick={() => runReview(pr)}
-                  className={`text-left text-sm px-3 py-2 rounded-lg border ${
-                    selectedPR?.githubId === pr.githubId
-                      ? 'border-slate-900'
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                >
-                  #{pr.number} {pr.title}
-                </button>
-              ))}
-            </div>
-          )}
-        </section>
-      )}
+        <>
+          <div className="flex gap-4 mt-6 border-b border-slate-200">
+            <button
+              onClick={() => setTab('review')}
+              className={`text-sm pb-2 border-b-2 ${
+                tab === 'review' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
+              }`}
+            >
+              Run Review
+            </button>
+            <button
+              onClick={() => setTab('history')}
+              className={`text-sm pb-2 border-b-2 ${
+                tab === 'history' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
+              }`}
+            >
+              History
+            </button>
+            <button
+              onClick={() => setTab('analytics')}
+              className={`text-sm pb-2 border-b-2 ${
+                tab === 'analytics' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
+              }`}
+            >
+              Analytics
+            </button>
+          </div>
 
-      {loading && <p className="text-sm text-slate-500 mt-6">Running review...</p>}
-      {error && <p className="text-sm text-red-600 mt-6">{error}</p>}
-      {review && (
-        <section className="mt-6">
-          <h2 className="text-sm font-medium text-slate-500 mb-2">
-            Review #{review.reviewId} — {review.status}
-          </h2>
-          <FindingsList findings={review.findings} />
-        </section>
+          {tab === 'review' && (
+            <section className="mt-4">
+              <h2 className="text-sm font-medium text-slate-500 mb-2">Pull requests</h2>
+              {pullRequests.length === 0 ? (
+                <p className="text-sm text-slate-500">No pull requests found in this repository.</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {pullRequests.map((pr) => (
+                    <button
+                      key={pr.githubId}
+                      onClick={() => runReview(pr)}
+                      className={`text-left text-sm px-3 py-2 rounded-lg border ${
+                        selectedPR?.githubId === pr.githubId
+                          ? 'border-slate-900'
+                          : 'border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      #{pr.number} {pr.title}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {loading && <p className="text-sm text-slate-500 mt-6">Loading...</p>}
+              {error && <p className="text-sm text-red-600 mt-6">{error}</p>}
+              {review && (
+                <section className="mt-6">
+                  <h2 className="text-sm font-medium text-slate-500 mb-2">
+                    Review #{review.reviewId} — {review.status}
+                  </h2>
+                  <FindingsList findings={review.findings} />
+                </section>
+              )}
+            </section>
+          )}
+
+          {tab === 'history' && (
+            <ReviewHistory owner={selectedRepo.owner} repo={selectedRepo.name} onSelectReview={viewPastReview} />
+          )}
+
+          {tab === 'analytics' && (
+            <AnalyticsDashboard owner={selectedRepo.owner} repo={selectedRepo.name} />
+          )}
+        </>
       )}
     </div>
   );

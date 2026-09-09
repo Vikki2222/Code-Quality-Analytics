@@ -18,7 +18,7 @@ export default function FindingsList({ findings }) {
     <ul className="mt-4 space-y-3">
       {findings.map((finding, i) => (
         <li key={i} className="border border-slate-200 rounded-lg p-4">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span
               className={`text-xs font-medium px-2 py-0.5 rounded border ${
                 SEVERITY_STYLES[finding.severity] || SEVERITY_STYLES.low
@@ -28,9 +28,15 @@ export default function FindingsList({ findings }) {
             </span>
             <span className="text-xs text-slate-500">{finding.category}</span>
             <span className="text-xs text-slate-400">
-              {finding.file}
-              {finding.line ? `:${finding.line}` : ''}
+              {finding.file_path}
+              {finding.line_number ? `:${finding.line_number}` : ''}
             </span>
+            {finding.occurrence_count > 1 && (
+              <span className="text-xs font-medium px-2 py-0.5 rounded border bg-purple-100 text-purple-800 border-purple-200">
+                🔁 {finding.occurrence_count}x
+                {finding.fingerprint_status === 'recurring' ? ' (recurring)' : ''}
+              </span>
+            )}
           </div>
           <h3 className="font-medium text-slate-900">{finding.title}</h3>
           <p className="text-sm text-slate-600 mt-1">{finding.description}</p>

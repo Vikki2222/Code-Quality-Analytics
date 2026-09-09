@@ -2,7 +2,7 @@ const BASE = '/api';
 
 async function request(path, options = {}) {
   const response = await fetch(`${BASE}${path}`, {
-    credentials: 'include', // send the session cookie
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     ...options,
   });
@@ -27,11 +27,11 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ owner, repo, pullNumber }),
     }),
+  getReview: (reviewId) => request(`/reviews/${reviewId}`),
+  getRepoHistory: (owner, repo) => request(`/reviews/history/${owner}/${repo}`),
+  getDashboard: (owner, repo) => request(`/analytics/${owner}/${repo}/dashboard`),
 };
 
-// Full page navigation, not a fetch - GitHub OAuth requires a real
-// browser redirect, and this always hits the backend directly
-// (bypassing the Vite proxy) since it's a top-level navigation.
 export function loginWithGitHub() {
   window.location.href = 'http://localhost:4000/api/auth/github';
 }

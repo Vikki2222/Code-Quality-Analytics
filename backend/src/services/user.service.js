@@ -33,10 +33,14 @@ async function findOrCreateFromGitHubProfile(profile, accessToken) {
   );
   return created.rows[0];
 }
+async function findByGitHubUsername(username) {
+  const result = await query('SELECT * FROM users WHERE username = $1', [username]);
+  return result.rows[0] || null;
+}
 
 async function findById(id) {
   const result = await query('SELECT * FROM users WHERE id = $1', [id]);
   return result.rows[0] || null;
 }
 
-module.exports = { findOrCreateFromGitHubProfile, findById };
+module.exports = { findOrCreateFromGitHubProfile, findById, findByGitHubUsername };
