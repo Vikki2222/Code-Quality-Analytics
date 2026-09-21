@@ -1,4 +1,5 @@
 const axios = require('axios');
+const logger = require('../config/logger');
 
 const GITHUB_API_BASE = 'https://api.github.com';
 
@@ -103,7 +104,7 @@ function logRateLimit(response) {
   const remaining = response.headers['x-ratelimit-remaining'];
   const limit = response.headers['x-ratelimit-limit'];
   if (remaining !== undefined && Number(remaining) < 100) {
-    console.warn(`GitHub API rate limit getting low: ${remaining}/${limit} remaining`);
+    logger.warn({ remaining, limit }, 'GitHub API rate limit getting low');
   }
 }
 

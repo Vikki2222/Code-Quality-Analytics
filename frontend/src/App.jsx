@@ -1,248 +1,215 @@
 import { useState, useEffect } from 'react';
 import { api, loginWithGitHub } from './api';
-import FindingsList from './FindingsList';
-import ReviewHistory from './ReviewHistory';
-import AnalyticsDashboard from './Dashboard';
+import Sidebar from './components/Sidebar';
+import AnalyticsView from './views/AnalyticsView';
+import ReviewView from './views/ReviewView';
+import HistoryView from './views/HistoryView';
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [repos, setRepos] = useState([]);
+  const [selectedRepo, setSelectedRepo] = useState(null);
+  const [activeView, setActiveView] = useState('analytics');
 
   useEffect(() => {
-    api
-      .getCurrentUser()
-      .then(setUser)
-      .catch(() => setUser(null))
+    api.getCurrentUser()
+      .then(u => { setUser(u); return api.getRepositories(); })
+      .then(d => setRepos(d.repositories))
+      .catch((err) => {
+        if (err.status === 401 || !err.status) setUser(null);
+      })
       .finally(() => setCheckingAuth(false));
   }, []);
 
+  function handleSelectRepo(repo) {
+    setSelectedRepo(repo);
+    setActiveView('analytics');
+  }
+
   if (checkingAuth) {
-    return <CenteredMessage text="Loading..." />;
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'var(--bg-base)',
+        color: 'var(--text-muted)',
+        fontFamily: 'var(--font-mono)',
+        fontSize: 13,
+      }}>
+        Loading...
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <Header user={user} onLogout={() => setUser(null)} />
-      <main className="max-w-3xl mx-auto px-4 py-8">
-        {user ? <Dashboard /> : <LoginScreen />}
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
+      {user && (
+        <Sidebar
+          user={user}
+          repos={repos}
+          selectedRepo={selectedRepo}
+          onSelectRepo={handleSelectRepo}
+          activeView={activeView}
+          onChangeView={setActiveView}
+          onLogout={() => {
+            api.logout();
+            setUser(null);
+            setRepos([]);
+            setSelectedRepo(null);
+          }}
+        />
+      )}
+
+      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        {!user && <LoginScreen />}
+
+        {user && !selectedRepo && (
+          <div style={{
+            flex: 1,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'var(--text-muted)',
+            fontSize: 13,
+            fontFamily: 'var(--font-ui)',
+          }}>
+            Select a repository from the sidebar
+          </div>
+        )}
+
+        {user && selectedRepo && activeView === 'analytics' && (
+          <AnalyticsView owner={selectedRepo.owner} repo={selectedRepo.name} />
+        )}
+        {user && selectedRepo && activeView === 'review' && (
+          <ReviewView owner={selectedRepo.owner} repo={selectedRepo.name} />
+        )}
+        {user && selectedRepo && activeView === 'history' && (
+          <HistoryView owner={selectedRepo.owner} repo={selectedRepo.name} />
+        )}
       </main>
     </div>
   );
 }
 
-function Header({ user, onLogout }) {
-  return (
-    <header className="border-b border-slate-200 bg-white">
-      <div className="max-w-3xl mx-auto px-4 py-4 flex items-center justify-between">
-        <h1 className="font-semibold text-slate-900">Code Quality Analytics</h1>
-        {user && (
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-600">{user.username}</span>
-            <button
-              onClick={async () => {
-                await api.logout();
-                onLogout();
-              }}
-              className="text-sm text-slate-500 hover:text-slate-800"
-            >
-              Log out
-            </button>
-          </div>
-        )}
-      </div>
-    </header>
-  );
-}
-
 function LoginScreen() {
-  return (
-    <div className="text-center py-16">
-      <p className="text-slate-600 mb-6">Connect your GitHub account to analyze pull requests.</p>
-      <button
-        onClick={loginWithGitHub}
-        className="bg-slate-900 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-slate-800"
-      >
-        Continue with GitHub
-      </button>
-    </div>
-  );
-}
-
-function Dashboard() {
-  const [repos, setRepos] = useState([]);
-  const [selectedRepo, setSelectedRepo] = useState(null);
-  const [tab, setTab] = useState('review'); // 'review' | 'history' | 'analytics'
-  const [pullRequests, setPullRequests] = useState([]);
-  const [selectedPR, setSelectedPR] = useState(null);
-  const [review, setReview] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    api.getRepositories().then((data) => setRepos(data.repositories));
-  }, []);
-
-  async function selectRepo(repo) {
-    setSelectedRepo(repo);
-    setSelectedPR(null);
-    setReview(null);
-    setError(null);
-    setTab('review');
-    const data = await api.getPullRequests(repo.owner, repo.name);
-    setPullRequests(data.pullRequests);
-  }
-
-  async function runReview(pr) {
-    setSelectedPR(pr);
-    setReview(null);
-    setError(null);
-    setLoading(true);
-    try {
-      const { reviewId } = await api.createReview(selectedRepo.owner, selectedRepo.name, pr.number);
-      await pollReview(reviewId);
-    } catch (err) {
-      setError(err.message);
-      setLoading(false);
-    }
-  }
-
-  async function pollReview(reviewId) {
-    const POLL_INTERVAL_MS = 2000;
-    const MAX_ATTEMPTS = 30;
-
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      const result = await api.getReview(reviewId);
-      if (result.status === 'completed') {
-        setReview(result);
-        setLoading(false);
-        return;
-      }
-      if (result.status === 'failed') {
-        setError(result.errorMessage || 'Review failed');
-        setLoading(false);
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-    }
-    setError('Review is taking longer than expected. Try refreshing shortly.');
-    setLoading(false);
-  }
-
-  async function viewPastReview(reviewId) {
-    setTab('review');
-    setLoading(true);
-    setError(null);
-    try {
-      const result = await api.getReview(reviewId);
-      setReview(result);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [hovered, setHovered] = useState(false);
 
   return (
-    <div>
-      <section>
-        <h2 className="text-sm font-medium text-slate-500 mb-2">Repository</h2>
-        <div className="flex flex-wrap gap-2">
-          {repos.map((repo) => (
-            <button
-              key={repo.githubId}
-              onClick={() => selectRepo(repo)}
-              className={`text-sm px-3 py-1.5 rounded-full border ${
-                selectedRepo?.githubId === repo.githubId
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'border-slate-300 text-slate-700 hover:border-slate-400'
-              }`}
-            >
-              {repo.name}
-            </button>
-          ))}
+    <div style={{
+      minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      background: 'var(--bg-base)',
+      position: 'relative',
+      overflow: 'hidden',
+    }}>
+      {/* Dot grid background — graph paper texture, one quiet texture */}
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        backgroundImage: 'radial-gradient(circle, #30363D 1px, transparent 1px)',
+        backgroundSize: '28px 28px',
+        opacity: 0.4,
+        pointerEvents: 'none',
+      }} />
+
+      {/* Content — centered, narrow, disciplined */}
+      <div style={{
+        position: 'relative',
+        zIndex: 1,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 0,
+        maxWidth: 380,
+        width: '100%',
+        padding: '0 24px',
+      }}>
+
+        {/* Product name — large, structural, monospace */}
+        <div style={{
+          fontFamily: 'var(--font-mono)',
+          fontSize: 42,
+          fontWeight: 600,
+          color: 'var(--text-primary)',
+          letterSpacing: '-1.5px',
+          lineHeight: 1,
+          marginBottom: 16,
+          textAlign: 'center',
+        }}>
+          cq·analytics
         </div>
-      </section>
 
-      {selectedRepo && (
-        <>
-          <div className="flex gap-4 mt-6 border-b border-slate-200">
-            <button
-              onClick={() => setTab('review')}
-              className={`text-sm pb-2 border-b-2 ${
-                tab === 'review' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
-              }`}
-            >
-              Run Review
-            </button>
-            <button
-              onClick={() => setTab('history')}
-              className={`text-sm pb-2 border-b-2 ${
-                tab === 'history' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
-              }`}
-            >
-              History
-            </button>
-            <button
-              onClick={() => setTab('analytics')}
-              className={`text-sm pb-2 border-b-2 ${
-                tab === 'analytics' ? 'border-slate-900 text-slate-900 font-medium' : 'border-transparent text-slate-500'
-              }`}
-            >
-              Analytics
-            </button>
-          </div>
+        {/* Accent rule — one structural element, not decoration */}
+        <div style={{
+          width: 32,
+          height: 2,
+          background: 'var(--accent)',
+          marginBottom: 20,
+          borderRadius: 1,
+        }} />
 
-          {tab === 'review' && (
-            <section className="mt-4">
-              <h2 className="text-sm font-medium text-slate-500 mb-2">Pull requests</h2>
-              {pullRequests.length === 0 ? (
-                <p className="text-sm text-slate-500">No pull requests found in this repository.</p>
-              ) : (
-                <div className="flex flex-col gap-2">
-                  {pullRequests.map((pr) => (
-                    <button
-                      key={pr.githubId}
-                      onClick={() => runReview(pr)}
-                      className={`text-left text-sm px-3 py-2 rounded-lg border ${
-                        selectedPR?.githubId === pr.githubId
-                          ? 'border-slate-900'
-                          : 'border-slate-200 hover:border-slate-300'
-                      }`}
-                    >
-                      #{pr.number} {pr.title}
-                    </button>
-                  ))}
-                </div>
-              )}
+        {/* Description — restrained, functional */}
+        <p style={{
+          fontFamily: 'var(--font-ui)',
+          fontSize: 14,
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          lineHeight: 1.65,
+          marginBottom: 40,
+          maxWidth: 300,
+        }}>
+          Track systemic code quality issues across your GitHub repositories over time.
+        </p>
 
-              {loading && <p className="text-sm text-slate-500 mt-6">Loading...</p>}
-              {error && <p className="text-sm text-red-600 mt-6">{error}</p>}
-              {review && (
-                <section className="mt-6">
-                  <h2 className="text-sm font-medium text-slate-500 mb-2">
-                    Review #{review.reviewId} — {review.status}
-                  </h2>
-                  <FindingsList findings={review.findings} />
-                </section>
-              )}
-            </section>
-          )}
+        {/* GitHub connect button — the only CTA, can't be missed */}
+        <button
+          onClick={loginWithGitHub}
+          onMouseEnter={() => setHovered(true)}
+          onMouseLeave={() => setHovered(false)}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            width: '100%',
+            padding: '13px 24px',
+            background: hovered ? '#2d7dd2' : 'var(--bg-surface)',
+            border: hovered ? '1px solid var(--accent)' : '1px solid var(--border-strong)',
+            color: hovered ? '#fff' : 'var(--text-primary)',
+            borderRadius: 8,
+            fontSize: 14,
+            fontFamily: 'var(--font-ui)',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'background 0.15s, border-color 0.15s, color 0.15s',
+          }}
+        >
+          {/* GitHub mark SVG — inline so no external dependency */}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0 0 24 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+          Connect GitHub
+        </button>
 
-          {tab === 'history' && (
-            <ReviewHistory owner={selectedRepo.owner} repo={selectedRepo.name} onSelectReview={viewPastReview} />
-          )}
-
-          {tab === 'analytics' && (
-            <AnalyticsDashboard owner={selectedRepo.owner} repo={selectedRepo.name} />
-          )}
-        </>
-      )}
+        {/* Fine print — present but not competing */}
+        <p style={{
+          fontFamily: 'var(--font-ui)',
+          fontSize: 11,
+          color: 'var(--text-muted)',
+          textAlign: 'center',
+          marginTop: 16,
+          opacity: 0.6,
+          lineHeight: 1.5,
+        }}>
+          Requires access to your repositories and pull requests.
+        </p>
+      </div>
     </div>
-  );
-}
-
-function CenteredMessage({ text }) {
-  return (
-    <div className="min-h-screen flex items-center justify-center text-slate-500 text-sm">{text}</div>
   );
 }

@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const logger = require('../config/logger');
 const { query } = require('../config/db');
 const reviewService = require('../services/review.service');
 const { enqueueReview } = require('../queues/review.queue');
@@ -78,7 +79,7 @@ router.post('/github', express.raw({ type: 'application/json' }), verifySignatur
     // being upfront about (see note below the code).
     const user = await userService.findByGitHubUsername(owner);
     if (!user) {
-      console.warn(`Webhook for ${owner}/${repo} - no matching connected user, skipping`);
+      logger.warn({ owner, repo }, 'Webhook received but no matching connected user found');
       return;
     }
 
@@ -99,9 +100,9 @@ router.post('/github', express.raw({ type: 'application/json' }), verifySignatur
       reviewId,
     });
 
-    console.log(`Webhook triggered review ${reviewId} for ${owner}/${repo}#${pullNumber}`);
+    logger.info({ reviewId, owner, repo, pullNumber }, 'Webhook triggered review');
   } catch (err) {
-    console.error('Webhook-triggered review failed:', err.message);
+    logger.error({ err: err.message }, 'Webhook-triggered review failed');
   }
 });
 

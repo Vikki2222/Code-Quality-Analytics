@@ -1,72 +1,92 @@
 -- Phase 1: Foundation
--- Only the users table is created now. repositories, pull_requests,
--- reviews, and findings are added in later phases as each is actually
--- needed - see doc section 21 (Development Order). Adding all tables
--- upfront before there's code that uses them is exactly the kind of
--- over-engineering the project explicitly wants to avoid.
-
 CREATE TABLE IF NOT EXISTS users (
-  id             SERIAL PRIMARY KEY,
-  github_id      BIGINT UNIQUE NOT NULL,
-  username       TEXT NOT NULL,
-  avatar_url     TEXT,
-  email          TEXT,
-  -- GitHub OAuth access token. In production this should be encrypted
-  -- at rest (e.g. via pgcrypto or app-level encryption) - flagged here,
-  -- not solved yet, so it isn't forgotten before Phase 7 (Security).
+  id                  SERIAL PRIMARY KEY,
+  github_id           BIGINT UNIQUE NOT NULL,
+  username            TEXT NOT NULL,
+  avatar_url          TEXT,
+  email               TEXT,
   github_access_token TEXT NOT NULL,
-  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Phase 4: Code Quality Memory (fingerprinting + lifecycle)
 
+-- Phase 2: PR Review MVP
+CREATE TABLE IF NOT EXISTS pull_requests (
+  id                SERIAL PRIMARY KEY,
+  github_id         BIGINT UNIQUE NOT NULL,
+  repository_owner  TEXT NOT NULL,
+  repository_name   TEXT NOT NULL,
+  number            INTEGER NOT NULL,
+  title             TEXT NOT NULL,
+  author_username   TEXT,
+  state             TEXT NOT NULL,
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  merged_at         TIMESTAMPTZ,
+  UNIQUE (repository_owner, repository_name, number)
+);
+
+CREATE TABLE IF NOT EXISTS reviews (
+  id                    SERIAL PRIMARY KEY,
+  pull_request_id       INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+  requested_by_user_id  INTEGER NOT NULL REFERENCES users(id),
+  status                TEXT NOT NULL DEFAULT 'queued',
+  model                 TEXT,
+  partial_analysis      BOOLEAN NOT NULL DEFAULT false,
+  skipped_files         JSONB,
+  error_message         TEXT,
+  started_at            TIMESTAMPTZ,
+  completed_at          TIMESTAMPTZ,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Phase 4: fingerprints must exist BEFORE findings references it
 CREATE TABLE IF NOT EXISTS finding_fingerprints (
   id                    SERIAL PRIMARY KEY,
   repository_owner      TEXT NOT NULL,
   repository_name       TEXT NOT NULL,
   file_path             TEXT NOT NULL,
   category              TEXT NOT NULL,
-
-  -- Tier 1: exact/near-exact match key (repo+file+category+normalized title)
   structural_key        TEXT NOT NULL,
-
-  -- Tier 2: embedding of the representative title+description, used for
-  -- fuzzy matching within the same repo+file+category bucket. Stored as
-  -- a plain JSON float array rather than pgvector - at this project's
-  -- scale (one user, a handful of repos), comparing a few candidate
-  -- embeddings in application code is simpler and fast enough. Revisit
-  -- with pgvector only if this ever needs to scale to many repos/orgs.
   embedding             JSONB,
-
   representative_title  TEXT NOT NULL,
   occurrence_count      INTEGER NOT NULL DEFAULT 1,
-
-  -- Lifecycle: open (seen once or more, still showing up) |
-  -- resolved (hasn't appeared in N most recent reviews of this file) |
-  -- recurring (reappeared after being marked resolved)
   status                TEXT NOT NULL DEFAULT 'open',
-
   first_detected_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_detected_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-
   UNIQUE (repository_owner, repository_name, file_path, category, structural_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_fingerprints_bucket
   ON finding_fingerprints(repository_owner, repository_name, file_path, category);
 
--- Link each finding to the fingerprint group it belongs to. Nullable
--- because Phase 2/3 findings already exist without one - backfilling
--- those is optional, not required for new findings to work correctly.
-ALTER TABLE findings ADD COLUMN IF NOT EXISTS fingerprint_id INTEGER REFERENCES finding_fingerprints(id);
+-- findings now references finding_fingerprints which already exists above
+CREATE TABLE IF NOT EXISTS findings (
+  id              SERIAL PRIMARY KEY,
+  review_id       INTEGER NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+  pull_request_id INTEGER NOT NULL REFERENCES pull_requests(id) ON DELETE CASCADE,
+  category        TEXT NOT NULL,
+  severity        TEXT NOT NULL,
+  file_path       TEXT NOT NULL,
+  line_number     INTEGER,
+  function_name   TEXT,
+  title           TEXT NOT NULL,
+  description     TEXT NOT NULL,
+  recommendation  TEXT,
+  status          TEXT NOT NULL DEFAULT 'open',
+  fingerprint_id  INTEGER REFERENCES finding_fingerprints(id),
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at     TIMESTAMPTZ
+);
 
--- Phase 6: Automation (webhooks)
--- Tracks GitHub's delivery ID for each webhook event we've processed,
--- so a redelivered webhook (GitHub retries on timeout/5xx) doesn't
--- trigger a duplicate review job.
+CREATE INDEX IF NOT EXISTS idx_findings_review_id ON findings(review_id);
+CREATE INDEX IF NOT EXISTS idx_findings_pull_request_id ON findings(pull_request_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_pull_request_id ON reviews(pull_request_id);
+
+-- Phase 6: Webhooks
 CREATE TABLE IF NOT EXISTS webhook_deliveries (
-  id            SERIAL PRIMARY KEY,
-  delivery_id   TEXT UNIQUE NOT NULL,  -- from the X-GitHub-Delivery header
-  event_type    TEXT NOT NULL,
-  received_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  id           SERIAL PRIMARY KEY,
+  delivery_id  TEXT UNIQUE NOT NULL,
+  event_type   TEXT NOT NULL,
+  received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );

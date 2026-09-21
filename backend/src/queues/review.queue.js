@@ -14,14 +14,14 @@ const reviewQueue = new Queue('review-analysis', { connection });
  */
 async function enqueueReview({ userId, accessToken, owner, repo, pullNumber, reviewId }) {
   const job = await reviewQueue.add(
-    'analyze-pr',
-    { userId, accessToken, owner, repo, pullNumber, reviewId },
-    {
-      attempts: 3, // retry up to 3 times on failure (e.g. Gemini rate limit)
-      backoff: { type: 'exponential', delay: 5000 }, // 5s, 10s, 20s between retries
-      removeOnComplete: 100, // keep last 100 completed jobs for debugging, don't grow unbounded
-      removeOnFail: 500,
-    }
+      'analyze-pr',
+      { userId, accessToken, owner, repo, pullNumber, reviewId },
+      {
+          attempts: 2,
+          backoff: { type: 'exponential', delay: 30000 }, // 30s, 60s between retries
+          removeOnComplete: 100,
+          removeOnFail: 500,
+      }
   );
   return job.id;
 }

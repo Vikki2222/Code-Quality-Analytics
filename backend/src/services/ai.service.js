@@ -1,31 +1,45 @@
 const OpenAI = require('openai');
 
-// Gemini exposes an official OpenAI-compatible endpoint, so the same
-// SDK works - just point baseURL at Google and use a Gemini model name.
+// OpenRouter for PR analysis - free tier, no card needed, 50 req/day.
+// openrouter/free spreads across all $0 models automatically.
+// openrouter/auto looks similar but bills variable pricing - don't use it.
 const client = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',  // with /v1
+  defaultHeaders: {
+    'HTTP-Referer': 'https://github.com/Vikki2222/code-quality-analytics',
+    'X-Title': 'Code Quality Analytics',
+  },
+});
+
+// Gemini still used for embeddings only - OpenRouter doesn't support
+// embedding endpoints, so we keep a separate client for that.
+const geminiClient = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
 });
 
-const VALID_CATEGORIES = ['bug', 'security', 'performance', 'readability', 'maintainability', 'testing'];
+const VALID_CATEGORIES = ['security', 'reliability', 'performance', 'maintainability', 'testing', 'scalability'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
 
-const SYSTEM_PROMPT = `You are a senior code reviewer analyzing a pull request diff.
+const SYSTEM_PROMPT = `You are a senior engineering lead analyzing a pull request diff for systemic code quality issues.
 
-Review the provided file diffs and identify concrete code quality issues.
-For each issue found, produce a finding with:
-- category: one of ${VALID_CATEGORIES.join(', ')}
-- severity: one of ${VALID_SEVERITIES.join(', ')}
-- file: the exact filename from the diff
-- line: the line number in the NEW version of the file, if determinable from the diff hunk header, otherwise null
-- title: a short (under 10 words) description of the issue
-- description: 1-3 sentences explaining the problem
-- recommendation: 1-2 sentences on how to fix it
+IMPORTANT: Do NOT flag syntax errors, style issues, missing semicolons, variable naming,
+or anything a linter would catch. Those are solved by other tools.
 
-Only flag genuine issues. Do not invent problems to pad the list.
-If a file has no issues, do not include it.
+Focus ONLY on issues that represent systemic risk or accumulating technical debt:
+- Security vulnerabilities that could be exploited (real attack vectors, not theoretical)
+- Missing error handling that will cause silent failures in production
+- Architectural patterns that will cause problems as the codebase scales
+- Test coverage gaps on critical business logic (not coverage percentage, real risk)
+- Performance patterns that degrade under load (not micro-optimizations)
+- Design decisions that create tight coupling or make future changes dangerous
 
-Respond ONLY with a JSON object of this exact shape, no other text:
+For each issue found, explain not just what is wrong but WHY it matters at a systemic level.
+Only flag issues a tech lead would raise in a real code review as a risk to long-term system health.
+If a file has no systemic issues, do not include it.
+
+Respond ONLY with a valid JSON object, no other text, no markdown:
 {
   "findings": [
     {
@@ -38,19 +52,17 @@ Respond ONLY with a JSON object of this exact shape, no other text:
       "recommendation": "..."
     }
   ]
-}`;
+}
+
+category must be one of: ${VALID_CATEGORIES.join(', ')}
+severity must be one of: ${VALID_SEVERITIES.join(', ')}`;
 
 /**
- * Send a batch of filtered/budgeted file diffs to the LLM and get back
- * structured findings. Takes filesToAnalyze exactly as produced by
- * utils/diffBudget.buildReviewPayload - this function has no knowledge
- * of GitHub or budgeting, just AI in/out.
- *
- * Using Gemini's free tier (no cost) via Google's official OpenAI
- * compatibility layer. Model name is config, not hardcoded logic, so
- * swapping providers/models later only touches this one constant.
+ * Analyze PR diffs via OpenRouter free tier.
+ * No response_format enforcement - not all free models support it.
+ * parseAndValidateFindings handles malformed responses defensively.
  */
-async function analyzeDiff(filesToAnalyze, { model = 'gemini-3.6-flash' } = {}) {
+async function analyzeDiff(filesToAnalyze, { model = 'openrouter/free' } = {}) {
   const diffText = filesToAnalyze
     .map((file) => `### File: ${file.filename} (${file.status})\n${file.patch}`)
     .join('\n\n');
@@ -61,7 +73,6 @@ async function analyzeDiff(filesToAnalyze, { model = 'gemini-3.6-flash' } = {}) 
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: diffText },
     ],
-    response_format: { type: 'json_object' },
     temperature: 0.2,
   });
 
@@ -72,7 +83,9 @@ async function analyzeDiff(filesToAnalyze, { model = 'gemini-3.6-flash' } = {}) 
 function parseAndValidateFindings(raw, model) {
   let parsed;
   try {
-    parsed = JSON.parse(raw);
+    // Strip markdown code fences if the model wraps its JSON response in them
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    parsed = JSON.parse(cleaned);
   } catch (err) {
     throw new Error(`AI response was not valid JSON: ${err.message}`);
   }
@@ -101,15 +114,12 @@ function parseAndValidateFindings(raw, model) {
   return { findings: validated, model };
 }
 
-
 /**
- * Get an embedding vector for a piece of text - used for Tier 2
- * fingerprinting (fuzzy similarity within a repo+file+category bucket).
- * Kept in ai.service.js since it's still "AI in, data out" - the
- * comparison logic itself lives in fingerprint.js, deterministic code.
+ * Embeddings still use Gemini directly - OpenRouter doesn't support
+ * embedding endpoints.
  */
 async function getEmbedding(text) {
-  const response = await client.embeddings.create({
+  const response = await geminiClient.embeddings.create({
     model: 'gemini-embedding-001',
     input: text,
   });
@@ -117,4 +127,3 @@ async function getEmbedding(text) {
 }
 
 module.exports = { analyzeDiff, getEmbedding };
-

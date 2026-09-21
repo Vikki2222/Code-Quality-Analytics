@@ -33,5 +33,5 @@ export const api = {
 };
 
 export function loginWithGitHub() {
-  window.location.href = 'http://localhost:4000/api/auth/github';
+  window.location.href = 'http://localhost/api/auth/github';
 }

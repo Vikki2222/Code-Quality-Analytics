@@ -27,3 +27,7 @@ Thumbs.db
 
 # Test/scratch files created during development
 backend/test-*.js
+
+
+postgres_data/
+redis_data/

@@ -2,41 +2,70 @@ require('dotenv').config();
 
 const express = require('express');
 const session = require('express-session');
+const pgSession = require('connect-pg-simple')(session);
 const cors = require('cors');
 const helmet = require('helmet');
 const passport = require('./config/passport');
+const logger = require('./config/logger');
 const authRoutes = require('./routes/auth.routes');
 const githubRoutes = require('./routes/github.routes');
 const reviewRoutes = require('./routes/review.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const webhookRoutes = require('./routes/webhook.routes');
+const { pool } = require('./config/db');
+const { apiLimiter, reviewLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
 
 app.use(helmet());
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    if (req.url === '/health') return; // skip healthcheck noise
+    logger.info(
+      {
+        method: req.method,
+        url: req.url,
+        status: res.statusCode,
+        ms: Date.now() - start,
+      },
+      'Request'
+    );
+  });
+  next();
+});
 app.use(
   cors({
     origin: process.env.FRONTEND_URL,
-    credentials: true, // required so the session cookie is sent cross-origin
+    credentials: true,
   })
 );
+
+// Webhook route MUST be before express.json() - needs raw body for
+// HMAC-SHA256 signature verification.
 app.use('/api/webhooks', webhookRoutes);
 
 app.use(express.json());
 
-// NOTE: MemoryStore (express-session default) is fine for local dev but
-// leaks memory and doesn't work across multiple server instances.
-// Before Phase 7 (Production), swap this for connect-pg-simple or
-// connect-redis so sessions survive restarts and scale horizontally.
+// connect-pg-simple stores sessions in a `session` table in Postgres.
+// Survives server restarts (unlike MemoryStore which loses all sessions
+// on every nodemon reload - the root cause of all the cookie-copying
+// friction we had earlier in development).
 app.use(
   session({
+    store: new pgSession({
+      pool,
+      tableName: 'session',
+      createTableIfMissing: true, // auto-creates the session table on first boot
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
+      secure: false, // http://localhost in Docker - secure requires HTTPS
+      sameSite: 'lax',
+      maxAge: 1000 * 60 * 60 * 24 * 7,
     },
   })
 );
@@ -52,19 +81,20 @@ app.use('/api/auth', authRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/', apiLimiter);
+app.use('/api/reviews', reviewLimiter);
+app.use('/api/auth', authLimiter);
 
-// Central error handler - keeps error shape consistent and avoids
-// leaking stack traces to the client in production.
 app.use((err, req, res, next) => {
-  console.error(err);
+  logger.error({ err, method: req.method, url: req.url }, 'Unhandled error');
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
   });
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = parseInt(process.env.PORT, 10) || 4000;
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  logger.info({ port: PORT }, 'Server started');
 });
 
 module.exports = app;

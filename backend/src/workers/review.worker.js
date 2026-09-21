@@ -1,5 +1,6 @@
 require('dotenv').config();
 const { Worker } = require('bullmq');
+const logger = require('../config/logger');
 const reviewService = require('../services/review.service');
 
 const connection = {
@@ -15,7 +16,7 @@ const worker = new Worker(
   'review-analysis',
   async (job) => {
     const { userId, accessToken, owner, repo, pullNumber, reviewId } = job.data;
-    console.log(`Processing review job ${job.id} for ${owner}/${repo}#${pullNumber}`);
+    logger.info({ jobId: job.id, owner, repo, pullNumber, reviewId }, 'Processing review job');
 
     await reviewService.processQueuedReview({
       reviewId,
@@ -30,11 +31,11 @@ const worker = new Worker(
 );
 
 worker.on('completed', (job) => {
-  console.log(`Review job ${job.id} completed`);
+  logger.info({ jobId: job.id }, 'Review job completed');
 });
 
 worker.on('failed', (job, err) => {
-  console.error(`Review job ${job?.id} failed:`, err.message);
+  logger.error({ jobId: job?.id, err }, 'Review job failed');
 });
 
-console.log('Review worker started, waiting for jobs...');
+logger.info('Review worker started, waiting for jobs...');
