@@ -102,31 +102,31 @@ A token budget pipeline runs before any AI call: filter out vendored/generated/b
 
 ## Local setup
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL
-- Redis
+### Quick start (Docker)
 
-### Backend
+```bash
+cp .env.example .env    # fill in the secrets; see comments in the file
+docker compose up --build
+```
+
+App: `http://localhost`. Migrations run automatically when the API starts.
+`docker-compose.override.yml` (local only) publishes ports 80 and 4000.
+For production on Coolify, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+### Without Docker
+
+Prerequisites: Node.js 20+, PostgreSQL, Redis.
 
 ```bash
 cd backend
 npm install
+cp ../.env.example .env
 ```
 
-Create `.env` from `.env.example` and fill in:
-```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/code_quality_analytics
-SESSION_SECRET=<long random string>
-GITHUB_CLIENT_ID=<from github.com/settings/developers>
-GITHUB_CLIENT_SECRET=<from github.com/settings/developers>
-GITHUB_CALLBACK_URL=http://localhost:4000/api/auth/github/callback
-FRONTEND_URL=http://localhost:5173
-REDIS_URL=redis://localhost:6379
-GEMINI_API_KEY=<from aistudio.google.com>
-TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
-GITHUB_WEBHOOK_SECRET=<openssl rand -hex 32>
-```
+Fill in `.env` — `.env.example` documents every variable. The API and worker refuse
+to start and list anything missing or malformed. For this setup use
+`FRONTEND_URL=http://localhost:5173` and
+`GITHUB_CALLBACK_URL=http://localhost:4000/api/auth/github/callback`.
 
 Create the database (the schema is applied automatically: the API runs any pending
 `backend/src/migrations/*.sql` files on startup):

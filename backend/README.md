@@ -1,7 +1,8 @@
 # Backend
 
 Express API + BullMQ worker. Project overview, architecture and design
-decisions are in the main README (`frontend/README.md`).
+decisions are in the root `README.md`; production deployment in
+`docs/DEPLOYMENT.md`.
 
 ## Layout
 
