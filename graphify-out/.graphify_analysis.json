@@ -1,0 +1,544 @@
+{
+  "communities": {
+    "0": [
+      "frontend_src_api",
+      "frontend_src_api_api",
+      "frontend_src_api_loginwithgithub",
+      "frontend_src_api_request",
+      "frontend_src_app",
+      "frontend_src_app_app",
+      "frontend_src_app_app_handleselectrepo",
+      "frontend_src_app_loginscreen",
+      "frontend_src_components_findingcard",
+      "frontend_src_components_findingcard_findingcard",
+      "frontend_src_components_findingcard_severity_color",
+      "frontend_src_components_healthbar",
+      "frontend_src_components_healthbar_healthbar",
+      "frontend_src_components_healthbar_metric",
+      "frontend_src_components_hotspots",
+      "frontend_src_components_hotspots_hotspots",
+      "frontend_src_components_recurringissues",
+      "frontend_src_components_recurringissues_recurringissues",
+      "frontend_src_components_recurringissues_status_color",
+      "frontend_src_components_recurringissues_timeago",
+      "frontend_src_components_sidebar",
+      "frontend_src_components_sidebar_sidebar",
+      "frontend_src_index",
+      "frontend_src_main",
+      "frontend_src_reviewhistory",
+      "frontend_src_reviewhistory_reviewhistory",
+      "frontend_src_reviewhistory_status_styles",
+      "frontend_src_views_analyticsview",
+      "frontend_src_views_analyticsview_analyticsview",
+      "frontend_src_views_analyticsview_panel",
+      "frontend_src_views_historyview",
+      "frontend_src_views_historyview_historyview",
+      "frontend_src_views_historyview_historyview_loadreview",
+      "frontend_src_views_historyview_timeago",
+      "frontend_src_views_reviewview",
+      "frontend_src_views_reviewview_reviewview",
+      "frontend_src_views_reviewview_reviewview_runreview",
+      "ref_react"
+    ],
+    "1": [
+      "backend_src_config_db_query",
+      "backend_src_services_analytics_service",
+      "backend_src_services_analytics_service_getdashboard",
+      "backend_src_services_analytics_service_getfilehotspots",
+      "backend_src_services_analytics_service_getissuetrends",
+      "backend_src_services_analytics_service_getrecurringissues",
+      "backend_src_services_analytics_service_getrepositoryhealth",
+      "backend_src_services_analytics_service_query",
+      "backend_src_services_analytics_service_severity_weights",
+      "backend_src_services_fingerprint_service_markresolvedfindings",
+      "backend_src_services_review_service",
+      "backend_src_services_review_service_aiservice",
+      "backend_src_services_review_service_buildreviewpayload",
+      "backend_src_services_review_service_completereview",
+      "backend_src_services_review_service_createqueuedreview",
+      "backend_src_services_review_service_createreview",
+      "backend_src_services_review_service_createreviewrow",
+      "backend_src_services_review_service_failreview",
+      "backend_src_services_review_service_fingerprintfinding_markresolvedfindings",
+      "backend_src_services_review_service_githubservice",
+      "backend_src_services_review_service_insertfindings",
+      "backend_src_services_review_service_processqueuedreview",
+      "backend_src_services_review_service_query",
+      "backend_src_services_review_service_upsertpullrequest",
+      "backend_src_tests_diffbudget_test",
+      "backend_src_tests_diffbudget_test_filternoisefiles_rankfilesbysignal_applytokenbudget_buildreviewpayload",
+      "backend_src_tests_diffbudget_test_makefile",
+      "backend_src_utils_diffbudget",
+      "backend_src_utils_diffbudget_applytokenbudget",
+      "backend_src_utils_diffbudget_buildreviewpayload",
+      "backend_src_utils_diffbudget_filternoisefiles",
+      "backend_src_utils_diffbudget_ignored_path_patterns",
+      "backend_src_utils_diffbudget_rankfilesbysignal",
+      "backend_src_utils_diffbudget_scorefile"
+    ],
+    "2": [
+      "frontend_package",
+      "frontend_package_dependencies",
+      "frontend_package_dependencies_react",
+      "frontend_package_dependencies_react_dom",
+      "frontend_package_dependencies_recharts",
+      "frontend_package_devdependencies",
+      "frontend_package_devdependencies_oxlint",
+      "frontend_package_devdependencies_tailwindcss",
+      "frontend_package_devdependencies_tailwindcss_vite",
+      "frontend_package_devdependencies_types_react",
+      "frontend_package_devdependencies_types_react_dom",
+      "frontend_package_devdependencies_vite",
+      "frontend_package_devdependencies_vitejs_plugin_react",
+      "frontend_package_name",
+      "frontend_package_private",
+      "frontend_package_scripts",
+      "frontend_package_scripts_build",
+      "frontend_package_scripts_dev",
+      "frontend_package_scripts_lint",
+      "frontend_package_scripts_preview",
+      "frontend_package_type",
+      "frontend_package_version",
+      "frontend_vite_config",
+      "ref_oxlint",
+      "ref_react_dom",
+      "ref_tailwindcss",
+      "ref_tailwindcss_vite",
+      "ref_types_react",
+      "ref_types_react_dom",
+      "ref_vite",
+      "ref_vitejs_plugin_react"
+    ],
+    "3": [
+      "backend_src_routes_webhook_routes",
+      "backend_src_routes_webhook_routes_crypto",
+      "backend_src_routes_webhook_routes_enqueuereview",
+      "backend_src_routes_webhook_routes_express",
+      "backend_src_routes_webhook_routes_logger",
+      "backend_src_routes_webhook_routes_query",
+      "backend_src_routes_webhook_routes_reviewservice",
+      "backend_src_routes_webhook_routes_router",
+      "backend_src_routes_webhook_routes_userservice",
+      "backend_src_routes_webhook_routes_verifysignature",
+      "backend_src_services_user_service",
+      "backend_src_services_user_service_decryptuser",
+      "backend_src_services_user_service_encrypt_decrypt",
+      "backend_src_services_user_service_findbygithubusername",
+      "backend_src_services_user_service_findbyid",
+      "backend_src_services_user_service_findorcreatefromgithubprofile",
+      "backend_src_services_user_service_query",
+      "backend_src_utils_encryption",
+      "backend_src_utils_encryption_crypto",
+      "backend_src_utils_encryption_decrypt",
+      "backend_src_utils_encryption_encrypt",
+      "backend_src_utils_encryption_key",
+      "ref_crypto"
+    ],
+    "4": [
+      "backend_src_controllers_analytics_controller",
+      "backend_src_controllers_analytics_controller_analyticsservice",
+      "backend_src_controllers_analytics_controller_getdashboard",
+      "backend_src_middleware_requireauth",
+      "backend_src_middleware_requireauth_requireauth",
+      "backend_src_routes_analytics_routes",
+      "backend_src_routes_analytics_routes_analyticscontroller",
+      "backend_src_routes_analytics_routes_express",
+      "backend_src_routes_analytics_routes_requireauth",
+      "backend_src_routes_analytics_routes_router",
+      "backend_src_routes_github_routes",
+      "backend_src_routes_github_routes_express",
+      "backend_src_routes_github_routes_githubcontroller",
+      "backend_src_routes_github_routes_requireauth",
+      "backend_src_routes_github_routes_router",
+      "backend_src_routes_review_routes",
+      "backend_src_routes_review_routes_express",
+      "backend_src_routes_review_routes_requireauth",
+      "backend_src_routes_review_routes_reviewcontroller",
+      "backend_src_routes_review_routes_router",
+      "ref_express"
+    ],
+    "5": [
+      "backend_src_services_ai_service",
+      "backend_src_services_ai_service_analyzediff",
+      "backend_src_services_ai_service_client",
+      "backend_src_services_ai_service_geminiclient",
+      "backend_src_services_ai_service_getembedding",
+      "backend_src_services_ai_service_openai",
+      "backend_src_services_ai_service_parseandvalidatefindings",
+      "backend_src_services_ai_service_valid_categories",
+      "backend_src_services_ai_service_valid_severities",
+      "backend_src_tests_review_service_test",
+      "backend_src_tests_review_service_test_aiservice",
+      "backend_src_tests_review_service_test_fingerprintfinding_markresolvedfindings",
+      "backend_src_tests_review_service_test_githubservice",
+      "backend_src_tests_review_service_test_mock_files",
+      "backend_src_tests_review_service_test_mock_findings",
+      "backend_src_tests_review_service_test_mock_pr",
+      "backend_src_tests_review_service_test_query",
+      "backend_src_tests_review_service_test_reviewservice",
+      "ref_openai"
+    ],
+    "6": [
+      "backend_package",
+      "backend_package_jest",
+      "backend_package_jest_testenvironment",
+      "backend_package_main",
+      "backend_package_name",
+      "backend_package_private",
+      "backend_package_type",
+      "backend_package_version",
+      "ref_connect_pg_simple",
+      "ref_cors",
+      "ref_dotenv",
+      "ref_express_session",
+      "ref_helmet",
+      "ref_ioredis",
+      "ref_jest",
+      "ref_node_rs_argon2",
+      "ref_nodemon",
+      "ref_pino_pretty"
+    ],
+    "7": [
+      "backend_package_dependencies",
+      "backend_package_dependencies_axios",
+      "backend_package_dependencies_bullmq",
+      "backend_package_dependencies_connect_pg_simple",
+      "backend_package_dependencies_cors",
+      "backend_package_dependencies_crypto",
+      "backend_package_dependencies_dotenv",
+      "backend_package_dependencies_express",
+      "backend_package_dependencies_express_rate_limit",
+      "backend_package_dependencies_express_session",
+      "backend_package_dependencies_helmet",
+      "backend_package_dependencies_ioredis",
+      "backend_package_dependencies_node_rs_argon2",
+      "backend_package_dependencies_openai",
+      "backend_package_dependencies_passport",
+      "backend_package_dependencies_passport_github2",
+      "backend_package_dependencies_pg",
+      "backend_package_dependencies_pino"
+    ],
+    "8": [
+      "backend_src_controllers_github_controller",
+      "backend_src_controllers_github_controller_getpullrequestfiles",
+      "backend_src_controllers_github_controller_getpullrequests",
+      "backend_src_controllers_github_controller_getrepositories",
+      "backend_src_controllers_github_controller_githubservice",
+      "backend_src_services_github_service",
+      "backend_src_services_github_service_axios",
+      "backend_src_services_github_service_getpullrequest",
+      "backend_src_services_github_service_getpullrequestfiles",
+      "backend_src_services_github_service_githubclient",
+      "backend_src_services_github_service_listpullrequests",
+      "backend_src_services_github_service_listuserrepositories",
+      "backend_src_services_github_service_logger",
+      "backend_src_services_github_service_logratelimit",
+      "backend_src_services_github_service_mappullrequest",
+      "backend_src_services_github_service_mappullrequestfile",
+      "backend_src_services_github_service_maprepository",
+      "ref_axios"
+    ],
+    "9": [
+      "backend_src_controllers_review_controller",
+      "backend_src_controllers_review_controller_createreview",
+      "backend_src_controllers_review_controller_enqueuereview",
+      "backend_src_controllers_review_controller_getrepohistory",
+      "backend_src_controllers_review_controller_getreview",
+      "backend_src_controllers_review_controller_query",
+      "backend_src_controllers_review_controller_reviewservice",
+      "backend_src_queues_review_queue",
+      "backend_src_queues_review_queue_connection",
+      "backend_src_queues_review_queue_enqueuereview",
+      "backend_src_queues_review_queue_queue",
+      "backend_src_queues_review_queue_reviewqueue",
+      "backend_src_workers_review_worker",
+      "backend_src_workers_review_worker_connection",
+      "backend_src_workers_review_worker_logger",
+      "backend_src_workers_review_worker_reviewservice",
+      "backend_src_workers_review_worker_worker",
+      "ref_bullmq"
+    ],
+    "10": [
+      "backend_src_services_fingerprint_service",
+      "backend_src_services_fingerprint_service_aiservice",
+      "backend_src_services_fingerprint_service_computestructuralkey_findbestmatch",
+      "backend_src_services_fingerprint_service_fingerprintfinding",
+      "backend_src_services_fingerprint_service_query",
+      "backend_src_services_fingerprint_service_recordoccurrence",
+      "backend_src_tests_fingerprint_test",
+      "backend_src_tests_fingerprint_test_normalizetitle_computestructuralkey_cosinesimilarity_findbestmatch_similarity_threshold",
+      "backend_src_utils_fingerprint",
+      "backend_src_utils_fingerprint_computestructuralkey",
+      "backend_src_utils_fingerprint_cosinesimilarity",
+      "backend_src_utils_fingerprint_crudestem",
+      "backend_src_utils_fingerprint_crypto",
+      "backend_src_utils_fingerprint_findbestmatch",
+      "backend_src_utils_fingerprint_normalizetitle",
+      "backend_src_utils_fingerprint_similarity_threshold",
+      "backend_src_utils_fingerprint_stopwords"
+    ],
+    "11": [
+      "backend_src_app",
+      "backend_src_app_analyticsroutes",
+      "backend_src_app_apilimiter_reviewlimiter_authlimiter",
+      "backend_src_app_app",
+      "backend_src_app_authroutes",
+      "backend_src_app_cors",
+      "backend_src_app_express",
+      "backend_src_app_githubroutes",
+      "backend_src_app_helmet",
+      "backend_src_app_logger",
+      "backend_src_app_passport",
+      "backend_src_app_pgsession",
+      "backend_src_app_pool",
+      "backend_src_app_reviewroutes",
+      "backend_src_app_session",
+      "backend_src_app_webhookroutes"
+    ],
+    "12": [
+      "frontend_src_components_trendchart",
+      "frontend_src_components_trendchart_colors",
+      "frontend_src_components_trendchart_customtooltip",
+      "frontend_src_components_trendchart_trendchart",
+      "frontend_src_dashboard",
+      "frontend_src_dashboard_analyticsdashboard",
+      "frontend_src_dashboard_category_colors",
+      "frontend_src_dashboard_healthscore",
+      "frontend_src_dashboard_hotspots",
+      "frontend_src_dashboard_recurringissues",
+      "frontend_src_dashboard_trendchart",
+      "ref_recharts"
+    ],
+    "13": [
+      "backend_src_controllers_auth_controller",
+      "backend_src_controllers_auth_controller_currentuser",
+      "backend_src_controllers_auth_controller_githubcallback",
+      "backend_src_controllers_auth_controller_logout",
+      "backend_src_routes_auth_routes",
+      "backend_src_routes_auth_routes_authcontroller",
+      "backend_src_routes_auth_routes_express",
+      "backend_src_routes_auth_routes_passport",
+      "backend_src_routes_auth_routes_router"
+    ],
+    "14": [
+      "backend_src_config_db",
+      "backend_src_config_db_logger",
+      "backend_src_config_db_pool",
+      "backend_src_config_logger",
+      "backend_src_config_logger_logger",
+      "backend_src_config_logger_pino",
+      "ref_pg",
+      "ref_pino"
+    ],
+    "15": [
+      "backend_src_middleware_ratelimiter",
+      "backend_src_middleware_ratelimiter_apilimiter",
+      "backend_src_middleware_ratelimiter_authlimiter",
+      "backend_src_middleware_ratelimiter_ratelimit",
+      "backend_src_middleware_ratelimiter_reviewlimiter",
+      "ref_express_rate_limit"
+    ],
+    "16": [
+      "frontend_oxlintrc",
+      "frontend_oxlintrc_plugins",
+      "frontend_oxlintrc_rules",
+      "frontend_oxlintrc_rules_react_only_export_components",
+      "frontend_oxlintrc_rules_react_rules_of_hooks",
+      "frontend_oxlintrc_schema"
+    ],
+    "17": [
+      "backend_package_scripts",
+      "backend_package_scripts_dev",
+      "backend_package_scripts_start",
+      "backend_package_scripts_test",
+      "backend_package_scripts_worker"
+    ],
+    "18": [
+      "backend_src_config_passport",
+      "backend_src_config_passport_passport",
+      "backend_src_config_passport_userservice",
+      "ref_passport",
+      "ref_passport_github2"
+    ],
+    "19": [
+      "backend_package_devdependencies",
+      "backend_package_devdependencies_jest",
+      "backend_package_devdependencies_nodemon",
+      "backend_package_devdependencies_pino_pretty"
+    ],
+    "20": [
+      "frontend_src_findingslist",
+      "frontend_src_findingslist_findingslist",
+      "frontend_src_findingslist_severity_styles"
+    ]
+  },
+  "cohesion": {
+    "0": 0.11095305832147938,
+    "1": 0.1265597147950089,
+    "2": 0.06881720430107527,
+    "3": 0.11857707509881422,
+    "4": 0.10476190476190476,
+    "5": 0.1111111111111111,
+    "6": 0.1111111111111111,
+    "7": 0.1111111111111111,
+    "8": 0.1895424836601307,
+    "9": 0.12418300653594772,
+    "10": 0.20588235294117646,
+    "11": 0.125,
+    "12": 0.24242424242424243,
+    "13": 0.2222222222222222,
+    "14": 0.25,
+    "15": 0.3333333333333333,
+    "16": 0.3333333333333333,
+    "17": 0.4,
+    "18": 0.4,
+    "19": 0.5,
+    "20": 0.6666666666666666
+  },
+  "gods": [
+    {
+      "id": "backend_src_config_db_query",
+      "label": "query()",
+      "degree": 28
+    },
+    {
+      "id": "frontend_src_app_app",
+      "label": "App()",
+      "degree": 8
+    },
+    {
+      "id": "frontend_src_views_analyticsview_analyticsview",
+      "label": "AnalyticsView()",
+      "degree": 8
+    },
+    {
+      "id": "backend_src_services_review_service_createreview",
+      "label": "createReview()",
+      "degree": 8
+    },
+    {
+      "id": "backend_src_utils_diffbudget_buildreviewpayload",
+      "label": "buildReviewPayload()",
+      "degree": 8
+    },
+    {
+      "id": "backend_src_services_fingerprint_service_fingerprintfinding",
+      "label": "fingerprintFinding()",
+      "degree": 8
+    },
+    {
+      "id": "ref_react",
+      "label": "react",
+      "degree": 8
+    },
+    {
+      "id": "backend_src_services_review_service_processqueuedreview",
+      "label": "processQueuedReview()",
+      "degree": 7
+    },
+    {
+      "id": "frontend_src_api_api",
+      "label": "api",
+      "degree": 7
+    },
+    {
+      "id": "ref_express",
+      "label": "express",
+      "degree": 7
+    }
+  ],
+  "surprises": [
+    {
+      "source": "getRepoHistory()",
+      "target": "query()",
+      "source_files": [
+        "backend/src/controllers/review.controller.js",
+        "backend/src/config/db.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `getRepoHistory()` unexpectedly reaches hub `query()`"
+    },
+    {
+      "source": "getReview()",
+      "target": "query()",
+      "source_files": [
+        "backend/src/controllers/review.controller.js",
+        "backend/src/config/db.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities; peripheral node `getReview()` unexpectedly reaches hub `query()`"
+    },
+    {
+      "source": "AnalyticsView()",
+      "target": "TrendChart()",
+      "source_files": [
+        "frontend/src/views/AnalyticsView.jsx",
+        "frontend/src/components/TrendChart.jsx"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "fingerprintFinding()",
+      "target": "query()",
+      "source_files": [
+        "backend/src/services/fingerprint.service.js",
+        "backend/src/config/db.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    },
+    {
+      "source": "recordOccurrence()",
+      "target": "query()",
+      "source_files": [
+        "backend/src/services/fingerprint.service.js",
+        "backend/src/config/db.js"
+      ],
+      "confidence": "EXTRACTED",
+      "relation": "calls",
+      "why": "bridges separate communities"
+    }
+  ],
+  "questions": [
+    {
+      "type": "bridge_node",
+      "question": "Why does `dependencies` connect `dependencies` to `backend/package.json`?",
+      "why": "High betweenness centrality (0.073) - this node is a cross-community bridge."
+    },
+    {
+      "type": "isolated_nodes",
+      "question": "What connects `oxlint`, `tailwindcss`, `@types/react` to the rest of the system?",
+      "why": "11 weakly-connected nodes found - possible documentation gaps or missing edges."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `App.jsx` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.11095305832147938 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `query()` connect `query` to `webhook.routes.js`, `review.service.test.js`, `review.controller.js`, `fingerprint.service.js`, `db.js`?",
+      "why": "High betweenness centrality (0.060) - this node is a cross-community bridge."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `query` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.1265597147950089 - nodes in this community are weakly interconnected."
+    },
+    {
+      "type": "bridge_node",
+      "question": "Why does `express` connect `analytics.routes.js` to `webhook.routes.js`, `app.js`, `auth.routes.js`, `backend/package.json`?",
+      "why": "High betweenness centrality (0.055) - this node is a cross-community bridge."
+    },
+    {
+      "type": "low_cohesion",
+      "question": "Should `frontend/package.json` be split into smaller, more focused modules?",
+      "why": "Cohesion score 0.06881720430107527 - nodes in this community are weakly interconnected."
+    }
+  ]
+}
