@@ -12,7 +12,7 @@ const client = new OpenAI({
   maxRetries: 1,
   defaultHeaders: {
     'HTTP-Referer': 'https://github.com/Vikki2222/code-quality-analytics',
-    'X-Title': 'Code Quality Analytics',
+    'X-Title': 'Chronicles',
   },
 });
 

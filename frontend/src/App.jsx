@@ -1,13 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { api, loginWithGitHub } from './api';
 import Sidebar from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
 import StatusMessage from './components/StatusMessage';
-import AnalyticsView from './views/AnalyticsView';
-import ReviewView from './views/ReviewView';
-import HistoryView from './views/HistoryView';
 
-const VIEWS = { analytics: AnalyticsView, review: ReviewView, history: HistoryView };
+// Loaded on demand: recharts (AnalyticsView) is most of the bundle and the
+// login screen doesn't need it. A chunk that fails to load (e.g. stale
+// hashes after a deploy) is caught by the view's ErrorBoundary -> Reload.
+const VIEWS = {
+  analytics: lazy(() => import('./views/AnalyticsView')),
+  review: lazy(() => import('./views/ReviewView')),
+  history: lazy(() => import('./views/HistoryView')),
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
@@ -113,7 +117,9 @@ export default function App() {
 
         {user && selectedRepo && (
           <ErrorBoundary key={viewKey}>
-            <ActiveView owner={selectedRepo.owner} repo={selectedRepo.name} />
+            <Suspense fallback={<StatusMessage>Loading...</StatusMessage>}>
+              <ActiveView owner={selectedRepo.owner} repo={selectedRepo.name} />
+            </Suspense>
           </ErrorBoundary>
         )}
       </main>
@@ -176,7 +182,7 @@ function LoginScreen() {
           marginBottom: 16,
           textAlign: 'center',
         }}>
-          cq·analytics
+          Chronicles
         </div>
 
         {/* Accent rule — one structural element, not decoration */}

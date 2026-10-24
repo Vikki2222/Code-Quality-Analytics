@@ -39,7 +39,7 @@ export default function Sidebar({
               letterSpacing: '-0.3px',
             }}
           >
-            cq·analytics
+            Chronicles
           </span>
         </div>
         {user && (
