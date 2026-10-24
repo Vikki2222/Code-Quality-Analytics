@@ -34,6 +34,22 @@ async function hasRepoAccess(user, owner, repo) {
   return allowed;
 }
 
+/**
+ * Validate :owner/:repo (and :number when present) without an access
+ * check - for routes that call GitHub with the user's own token, where
+ * GitHub itself enforces access.
+ */
+function validateRepoParams(req, res, next) {
+  const { owner, repo, number } = req.params;
+  if (!isValidRepoName(owner) || !isValidRepoName(repo)) {
+    return res.status(400).json({ error: 'Invalid repository name' });
+  }
+  if (number !== undefined && !/^[1-9]\d{0,9}$/.test(number)) {
+    return res.status(400).json({ error: 'Invalid pull request number' });
+  }
+  next();
+}
+
 async function requireRepoAccess(req, res, next) {
   const { owner, repo } = req.params;
   if (!isValidRepoName(owner) || !isValidRepoName(repo)) {
@@ -51,4 +67,4 @@ async function requireRepoAccess(req, res, next) {
   }
 }
 
-module.exports = { requireRepoAccess, hasRepoAccess, isValidRepoName, accessCache };
+module.exports = { requireRepoAccess, validateRepoParams, hasRepoAccess, isValidRepoName, accessCache };

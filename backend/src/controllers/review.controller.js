@@ -1,14 +1,15 @@
 const reviewService = require('../services/review.service');
 const { enqueueReview } = require('../queues/review.queue');
 const { query } = require('../config/db');
-const { hasRepoAccess } = require('../middleware/requireRepoAccess');
+const { hasRepoAccess, isValidRepoName } = require('../middleware/requireRepoAccess');
 
 async function createReview(req, res, next) {
   try {
-    const { owner, repo, pullNumber } = req.body;
+    const { owner, repo } = req.body || {};
+    const pullNumber = Number(req.body && req.body.pullNumber);
 
-    if (!owner || !repo || !pullNumber) {
-      return res.status(400).json({ error: 'owner, repo, and pullNumber are required' });
+    if (!isValidRepoName(owner) || !isValidRepoName(repo) || !Number.isInteger(pullNumber) || pullNumber < 1) {
+      return res.status(400).json({ error: 'Valid owner, repo, and pullNumber are required' });
     }
 
     const { reviewId } = await reviewService.createQueuedReview({
@@ -19,13 +20,13 @@ async function createReview(req, res, next) {
       pullNumber,
     });
 
-    await enqueueReview({
-      userId: req.user.id,
-      owner,
-      repo,
-      pullNumber,
-      reviewId,
-    });
+    try {
+      await enqueueReview({ userId: req.user.id, owner, repo, pullNumber, reviewId });
+    } catch (err) {
+      // Redis down: don't leave a review stuck in 'running' forever.
+      await reviewService.failReview(reviewId, 'Could not queue review');
+      throw err;
+    }
 
     res.status(202).json({ reviewId, status: 'queued' });
   } catch (err) {

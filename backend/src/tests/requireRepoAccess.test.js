@@ -1,7 +1,7 @@
 jest.mock('../services/github.service', () => ({ canAccessRepository: jest.fn() }));
 
 const githubService = require('../services/github.service');
-const { requireRepoAccess, accessCache } = require('../middleware/requireRepoAccess');
+const { requireRepoAccess, validateRepoParams, accessCache } = require('../middleware/requireRepoAccess');
 
 function mockRes() {
   const res = {};
@@ -77,5 +77,26 @@ describe('requireRepoAccess', () => {
     githubService.canAccessRepository.mockRejectedValue(err);
     const { next } = await run({ owner: 'octo', repo: 'repo' });
     expect(next).toHaveBeenCalledWith(err);
+  });
+});
+
+describe('validateRepoParams', () => {
+  function check(params) {
+    const res = mockRes();
+    const next = jest.fn();
+    validateRepoParams({ params }, res, next);
+    return { res, next };
+  }
+
+  test('accepts valid owner/repo/number', () => {
+    expect(check({ owner: 'my-org', repo: 'repo.js_2', number: '42' }).next).toHaveBeenCalled();
+  });
+
+  test.each([['0'], ['-1'], ['1e3'], ['abc'], ['12345678901']])('rejects PR number %p', (number) => {
+    expect(check({ owner: 'o', repo: 'r', number }).res.status).toHaveBeenCalledWith(400);
+  });
+
+  test('rejects a traversal repo name', () => {
+    expect(check({ owner: 'o', repo: '..' }).res.status).toHaveBeenCalledWith(400);
   });
 });

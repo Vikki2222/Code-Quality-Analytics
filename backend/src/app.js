@@ -1,4 +1,7 @@
 require('dotenv').config();
+const { validateEnv, API_ENV } = require('./config/env');
+
+validateEnv(API_ENV);
 
 const express = require('express');
 const session = require('express-session');
@@ -13,6 +16,8 @@ const reviewRoutes = require('./routes/review.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
 const webhookRoutes = require('./routes/webhook.routes');
 const { pool } = require('./config/db');
+const { reviewQueue } = require('./queues/review.queue');
+const { runMigrations } = require('./db/migrate');
 const { apiLimiter, reviewLimiter, authLimiter } = require('./middleware/rateLimiter');
 
 const app = express();
@@ -88,8 +93,33 @@ app.use(
 app.use(passport.initialize());
 app.use(passport.session());
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
+const HEALTH_CHECK_TIMEOUT_MS = 2000;
+
+function withTimeout(promise, ms) {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+// Reports 503 when Postgres or Redis is unreachable, so the container
+// healthcheck (and Coolify) see a broken API as unhealthy rather than "ok".
+app.get('/health', async (req, res) => {
+  const [db, redis] = await Promise.allSettled([
+    withTimeout(pool.query('SELECT 1'), HEALTH_CHECK_TIMEOUT_MS),
+    withTimeout(
+      reviewQueue.client.then((client) => client.ping()),
+      HEALTH_CHECK_TIMEOUT_MS
+    ),
+  ]);
+  const status = { db: db.status === 'fulfilled' ? 'ok' : 'error', redis: redis.status === 'fulfilled' ? 'ok' : 'error' };
+  const healthy = status.db === 'ok' && status.redis === 'ok';
+
+  if (!healthy) {
+    logger.warn({ ...status, dbErr: db.reason, redisErr: redis.reason }, 'Health check failed');
+  }
+  res.status(healthy ? 200 : 503).json({ status: healthy ? 'ok' : 'degraded', ...status });
 });
 
 app.use('/api/auth', authRoutes);
@@ -105,8 +135,44 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = parseInt(process.env.PORT, 10) || 4000;
-app.listen(PORT, () => {
-  logger.info({ port: PORT }, 'Server started');
+const SHUTDOWN_TIMEOUT_MS = 10000;
+let server;
+
+async function start() {
+  await runMigrations(pool);
+  server = app.listen(PORT, () => {
+    logger.info({ port: PORT }, 'Server started');
+  });
+}
+
+// On deploy, Docker sends SIGTERM then SIGKILLs after the grace period.
+// Stop taking new connections, let in-flight requests finish, then close
+// the DB pool and Redis connection.
+function shutdown(signal) {
+  logger.info({ signal }, 'Shutting down API');
+  setTimeout(() => {
+    logger.error('Graceful shutdown timed out, forcing exit');
+    process.exit(1);
+  }, SHUTDOWN_TIMEOUT_MS).unref();
+
+  if (!server) process.exit(0);
+  server.close(async () => {
+    await Promise.allSettled([pool.end(), reviewQueue.close()]);
+    process.exit(0);
+  });
+  server.closeIdleConnections();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('unhandledRejection', (err) => {
+  logger.fatal({ err }, 'Unhandled promise rejection');
+  process.exit(1);
+});
+
+start().catch((err) => {
+  logger.fatal({ err }, 'API failed to start');
+  process.exit(1);
 });
 
 module.exports = app;

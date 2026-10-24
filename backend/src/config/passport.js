@@ -12,6 +12,10 @@ passport.use(
       // 'repo' scope (private repos) can be added later if needed -
       // don't request more than the app currently uses.
       scope: ['read:user', 'user:email', 'repo'],
+      // Random nonce stored in the session and checked on callback -
+      // prevents login CSRF (an attacker completing OAuth into their own
+      // account in the victim's browser).
+      state: true,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
@@ -32,6 +36,9 @@ passport.serializeUser((user, done) => {
 passport.deserializeUser(async (id, done) => {
   try {
     const user = await userService.findById(id);
+    // false = treat the session as logged out. Covers a deleted user and a
+    // token that no longer decrypts (key rotation) - both need a fresh login.
+    if (!user || !user.github_access_token) return done(null, false);
     done(null, user);
   } catch (err) {
     done(err, null);

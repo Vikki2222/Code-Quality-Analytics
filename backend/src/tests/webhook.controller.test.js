@@ -1,8 +1,8 @@
 jest.mock('../config/logger', () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 jest.mock('../config/db', () => ({ query: jest.fn() }));
-jest.mock('../services/review.service', () => ({ createQueuedReview: jest.fn() }));
+jest.mock('../services/review.service', () => ({ createQueuedReview: jest.fn(), failReview: jest.fn() }));
 jest.mock('../queues/review.queue', () => ({ enqueueReview: jest.fn() }));
-jest.mock('../services/user.service', () => ({ findByGitHubUsername: jest.fn() }));
+jest.mock('../services/user.service', () => ({ findByGitHubId: jest.fn() }));
 
 const { query } = require('../config/db');
 const reviewService = require('../services/review.service');
@@ -12,7 +12,7 @@ const { handleGitHubWebhook } = require('../controllers/webhook.controller');
 
 const PR_PAYLOAD = {
   action: 'opened',
-  repository: { owner: { login: 'octo' }, name: 'repo' },
+  repository: { owner: { login: 'octo', id: 555 }, name: 'repo' },
   pull_request: { number: 7 },
 };
 
@@ -33,7 +33,7 @@ function mockRes() {
 beforeEach(() => {
   jest.clearAllMocks();
   query.mockResolvedValue({ rows: [] });
-  userService.findByGitHubUsername.mockResolvedValue({ id: 3, github_access_token: 'gho_secret' });
+  userService.findByGitHubId.mockResolvedValue({ id: 3, github_access_token: 'gho_secret' });
   reviewService.createQueuedReview.mockResolvedValue({ reviewId: 11 });
   enqueueReview.mockResolvedValue('job-1');
 });
@@ -98,5 +98,28 @@ describe('handleGitHubWebhook', () => {
     const res = mockRes();
     await handleGitHubWebhook(mockReq(), res); // a rejection here would fail the test
     expect(res.status).toHaveBeenCalledWith(200);
+  });
+  test('looks up the connected user by immutable owner id, not username', async () => {
+    await handleGitHubWebhook(mockReq(), mockRes());
+    expect(userService.findByGitHubId).toHaveBeenCalledWith(555);
+  });
+
+  test('skips (no review) when the owner is not a connected user', async () => {
+    userService.findByGitHubId.mockResolvedValue(null);
+    await handleGitHubWebhook(mockReq(), mockRes());
+    expect(reviewService.createQueuedReview).not.toHaveBeenCalled();
+  });
+
+  test('skips when the stored token cannot be decrypted', async () => {
+    userService.findByGitHubId.mockResolvedValue({ id: 3, github_access_token: null });
+    await handleGitHubWebhook(mockReq(), mockRes());
+    expect(reviewService.createQueuedReview).not.toHaveBeenCalled();
+  });
+
+  test('on enqueue failure: marks the review failed and frees the delivery id for redelivery', async () => {
+    enqueueReview.mockRejectedValue(new Error('Redis down'));
+    await handleGitHubWebhook(mockReq(), mockRes());
+    expect(reviewService.failReview).toHaveBeenCalledWith(11, 'Could not queue review');
+    expect(query).toHaveBeenCalledWith('DELETE FROM webhook_deliveries WHERE delivery_id = $1', ['delivery-1']);
   });
 });

@@ -48,6 +48,7 @@ async function handleGitHubWebhook(req, res) {
   if (eventType !== 'pull_request') return;
   if (!REVIEW_ACTIONS.includes(payload.action)) return;
 
+  let reviewId;
   try {
     const owner = payload.repository.owner.login;
     const repo = payload.repository.name;
@@ -55,26 +56,37 @@ async function handleGitHubWebhook(req, res) {
 
     // Webhooks don't carry a session - we need a real user's access
     // token to call GitHub's API on their behalf. Use the repo owner's
-    // account if they've connected it.
-    const user = await userService.findByGitHubUsername(owner);
-    if (!user) {
-      logger.warn({ owner, repo, deliveryId }, 'Webhook received but no matching connected user found');
+    // account if they've connected it, matched by immutable GitHub id.
+    // Org-owned repos have an org as owner, so they never match here.
+    const user = await userService.findByGitHubId(payload.repository.owner.id);
+    if (!user || !user.github_access_token) {
+      logger.warn(
+        { owner, repo, deliveryId, reason: user ? 'token_unavailable' : 'no_connected_user' },
+        'Webhook received but no usable connected user for repo owner'
+      );
       return;
     }
 
-    const { reviewId } = await reviewService.createQueuedReview({
+    ({ reviewId } = await reviewService.createQueuedReview({
       userId: user.id,
       accessToken: user.github_access_token,
       owner,
       repo,
       pullNumber,
-    });
+    }));
 
     await enqueueReview({ userId: user.id, owner, repo, pullNumber, reviewId });
 
     logger.info({ reviewId, owner, repo, pullNumber, deliveryId }, 'Webhook triggered review');
   } catch (err) {
-    logger.error({ err, deliveryId }, 'Webhook-triggered review failed');
+    logger.error({ err, deliveryId, reviewId }, 'Webhook-triggered review failed');
+    // GitHub already got a 200 and won't retry on its own. Clean up so a
+    // manual "Redeliver" from GitHub's webhook settings works, and so the
+    // review doesn't sit in 'running' forever.
+    await Promise.allSettled([
+      query('DELETE FROM webhook_deliveries WHERE delivery_id = $1', [deliveryId]),
+      reviewId && reviewService.failReview(reviewId, 'Could not queue review'),
+    ]);
   }
 }
 

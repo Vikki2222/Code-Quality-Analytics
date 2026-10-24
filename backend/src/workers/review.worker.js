@@ -1,6 +1,11 @@
 require('dotenv').config();
+const { validateEnv, WORKER_ENV } = require('../config/env');
+
+if (require.main === module) validateEnv(WORKER_ENV);
+
 const { Worker } = require('bullmq');
 const logger = require('../config/logger');
+const { pool } = require('../config/db');
 const reviewService = require('../services/review.service');
 const userService = require('../services/user.service');
 
@@ -22,8 +27,10 @@ async function processJob(job) {
   const isFinalAttempt = job.attemptsMade + 1 >= (job.opts.attempts || 1);
 
   const user = await userService.findById(userId);
-  if (!user) {
-    const err = new Error(`User ${userId} not found`);
+  if (!user || !user.github_access_token) {
+    const err = new Error(
+      user ? 'GitHub authorization expired. Please log in again and re-run the review.' : `User ${userId} not found`
+    );
     if (isFinalAttempt) await reviewService.failReview(reviewId, err.message);
     throw err;
   }
@@ -51,6 +58,24 @@ if (require.main === module) {
 
   worker.on('failed', (job, err) => {
     logger.error({ jobId: job?.id, reviewId: job?.data?.reviewId, attemptsMade: job?.attemptsMade, err }, 'Review job failed');
+  });
+
+  // worker.close() waits for active jobs to finish, so a deploy doesn't
+  // cut a review off mid-write. compose stop_grace_period must exceed the
+  // longest job (AI timeout + embeddings), or Docker SIGKILLs first and
+  // BullMQ re-runs the job as stalled.
+  async function shutdown(signal) {
+    logger.info({ signal }, 'Worker shutting down, waiting for active jobs');
+    await worker.close();
+    await pool.end();
+    process.exit(0);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) => {
+    logger.fatal({ err }, 'Unhandled promise rejection in worker');
+    process.exit(1);
   });
 
   logger.info('Review worker started, waiting for jobs...');

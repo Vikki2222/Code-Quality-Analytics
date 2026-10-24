@@ -46,4 +46,11 @@ describe('review worker processJob', () => {
     expect(reviewService.failReview).toHaveBeenCalledWith(11, 'User 3 not found');
     expect(reviewService.processQueuedReview).not.toHaveBeenCalled();
   });
+
+  test('fails with a re-login message when the stored token cannot be decrypted', async () => {
+    userService.findById.mockResolvedValue({ id: 3, github_access_token: null });
+    await expect(processJob(job({ attemptsMade: 1 }))).rejects.toThrow(/log in again/);
+    expect(reviewService.failReview).toHaveBeenCalledWith(11, expect.stringMatching(/log in again/));
+    expect(reviewService.processQueuedReview).not.toHaveBeenCalled();
+  });
 });

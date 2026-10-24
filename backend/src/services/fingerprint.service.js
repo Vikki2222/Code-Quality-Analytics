@@ -50,10 +50,17 @@ async function fingerprintFinding({ owner, repo, filePath, category, title, desc
     return recordOccurrence(match.fingerprint.id, db);
   }
 
+  // ON CONFLICT: a concurrent review (worker concurrency 2) may have created
+  // this exact fingerprint after our Tier 1 lookup - count it, don't fail.
   const created = await db.query(
     `INSERT INTO finding_fingerprints
        (repository_owner, repository_name, file_path, category, structural_key, embedding, representative_title, occurrence_count, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'open')
+     ON CONFLICT (repository_owner, repository_name, file_path, category, structural_key)
+     DO UPDATE SET occurrence_count = finding_fingerprints.occurrence_count + 1,
+                   last_detected_at = now(),
+                   status = CASE WHEN finding_fingerprints.status = 'resolved' THEN 'recurring'
+                                 ELSE finding_fingerprints.status END
      RETURNING id`,
     [owner, repo, filePath, category, structuralKey, JSON.stringify(newEmbedding), title]
   );

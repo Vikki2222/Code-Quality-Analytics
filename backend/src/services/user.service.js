@@ -1,4 +1,5 @@
 const { query } = require('../config/db');
+const logger = require('../config/logger');
 const { encrypt, decrypt } = require('../utils/encryption');
 
 /**
@@ -45,8 +46,12 @@ async function findById(id) {
   return decryptUser(result.rows[0]);
 }
 
-async function findByGitHubUsername(username) {
-  const result = await query('SELECT * FROM users WHERE username = $1', [username]);
+/**
+ * Look up by GitHub's numeric account id, not username - usernames can be
+ * changed and later claimed by someone else; ids never are.
+ */
+async function findByGitHubId(githubId) {
+  const result = await query('SELECT * FROM users WHERE github_id = $1', [githubId]);
   if (!result.rows[0]) return null;
   return decryptUser(result.rows[0]);
 }
@@ -56,12 +61,20 @@ async function findByGitHubUsername(username) {
  * object - callers (passport, github.service, review.service) always
  * get a plaintext token and never need to know about the encryption.
  * Keeps the decrypt/encrypt boundary tight inside this one service.
+ *
+ * A token that can't be decrypted (TOKEN_ENCRYPTION_KEY rotated, or
+ * tampered ciphertext) comes back as null - callers treat that as
+ * "log in again" rather than crashing every request for that user.
+ * The next login stores a freshly encrypted token.
  */
 function decryptUser(user) {
-  return {
-    ...user,
-    github_access_token: decrypt(user.github_access_token),
-  };
+  let token = null;
+  try {
+    token = decrypt(user.github_access_token);
+  } catch (err) {
+    logger.warn({ userId: user.id }, 'Stored GitHub token could not be decrypted; user must log in again');
+  }
+  return { ...user, github_access_token: token };
 }
 
-module.exports = { findOrCreateFromGitHubProfile, findById, findByGitHubUsername };
+module.exports = { findOrCreateFromGitHubProfile, findById, findByGitHubId };

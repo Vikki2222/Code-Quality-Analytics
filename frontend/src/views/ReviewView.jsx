@@ -9,12 +9,16 @@ export default function ReviewView({ owner, repo }) {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [listError, setListError] = useState(null);
 
   useEffect(() => {
-    api.getPullRequests(owner, repo).then((data) => {
-      setPullRequests(data.pullRequests);
-      setLoaded(true);
-    });
+    api.getPullRequests(owner, repo)
+      .then((data) => {
+        setPullRequests(data.pullRequests);
+        setListError(null);
+      })
+      .catch((err) => setListError(err.message))
+      .finally(() => setLoaded(true));
   }, [owner, repo]);
 
   async function runReview(pr) {
@@ -54,7 +58,12 @@ export default function ReviewView({ owner, repo }) {
     <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', height: '100%', minHeight: 'calc(100vh - 1px)' }}>
       <div style={{ borderRight: '1px solid var(--border)', padding: '16px 0', overflowY: 'auto' }}>
         <div style={{ padding: '4px 16px 10px', fontSize: 11, color: 'var(--text-muted)' }}>Pull requests</div>
-        {pullRequests.length === 0 && loaded && (
+        {listError && (
+          <div style={{ padding: '8px 16px', fontSize: 13, color: 'var(--danger)' }}>
+            Could not load pull requests: {listError}
+          </div>
+        )}
+        {pullRequests.length === 0 && loaded && !listError && (
           <div style={{ padding: '8px 16px', fontSize: 13, color: 'var(--text-muted)' }}>
             No pull requests found.
           </div>
