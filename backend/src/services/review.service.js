@@ -1,4 +1,4 @@
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const githubService = require('./github.service');
 const aiService = require('./ai.service');
 const { fingerprintFinding, markResolvedFindings } = require('./fingerprint.service');
@@ -38,11 +38,17 @@ async function createQueuedReview({ userId, accessToken, owner, repo, pullNumber
   return { reviewId, pullRequestId };
 }
 
-async function processQueuedReview({ reviewId, userId, accessToken, owner, repo, pullNumber }) {
-  const reviewRow = await query('SELECT pull_request_id FROM reviews WHERE id = $1', [reviewId]);
-  const pullRequestId = reviewRow.rows[0].pull_request_id;
-
+/**
+ * isFinalAttempt: BullMQ retries failed jobs. Earlier attempts leave the
+ * review 'running' so the UI keeps polling instead of showing a failure
+ * that the retry may fix; only the last attempt marks it failed.
+ */
+async function processQueuedReview({ reviewId, userId, accessToken, owner, repo, pullNumber, isFinalAttempt = true }) {
   try {
+    const reviewRow = await query('SELECT pull_request_id FROM reviews WHERE id = $1', [reviewId]);
+    if (!reviewRow.rows[0]) throw new Error(`Review ${reviewId} not found`);
+    const pullRequestId = reviewRow.rows[0].pull_request_id;
+
     const files = await githubService.getPullRequestFiles(accessToken, owner, repo, pullNumber);
     const { filesToAnalyze, skippedFiles, partialAnalysis } = buildReviewPayload(files);
 
@@ -53,13 +59,17 @@ async function processQueuedReview({ reviewId, userId, accessToken, owner, repo,
 
     const { findings, model } = await aiService.analyzeDiff(filesToAnalyze);
 
-    const detectedFingerprintIds = await insertFindings(reviewId, pullRequestId, findings, owner, repo);
-    const analyzedFilePaths = [...new Set(filesToAnalyze.map((f) => f.filename))];
-    await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds });
-
-    await completeReview(reviewId, { model, partialAnalysis, skippedFiles });
+    // All writes commit together: if fingerprinting fails part-way (e.g.
+    // an embedding API error), the retry starts clean instead of inserting
+    // duplicate findings and double-counting fingerprint occurrences.
+    await withTransaction(async (client) => {
+      const detectedFingerprintIds = await insertFindings(reviewId, pullRequestId, findings, owner, repo, client);
+      const analyzedFilePaths = [...new Set(filesToAnalyze.map((f) => f.filename))];
+      await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds }, client);
+      await completeReview(reviewId, { model, partialAnalysis, skippedFiles }, client);
+    });
   } catch (err) {
-    await failReview(reviewId, err.message);
+    if (isFinalAttempt) await failReview(reviewId, err.message);
     throw err;
   }
 }
@@ -97,22 +107,25 @@ async function createReviewRow(pullRequestId, userId) {
  * afterward to figure out which previously-open fingerprints for these
  * files were NOT redetected (i.e. resolved).
  */
-async function insertFindings(reviewId, pullRequestId, findings, owner, repo) {
+async function insertFindings(reviewId, pullRequestId, findings, owner, repo, db = { query }) {
   const detectedFingerprintIds = [];
 
   for (const finding of findings) {
-    const fingerprintId = await fingerprintFinding({
-      owner,
-      repo,
-      filePath: finding.file,
-      category: finding.category,
-      title: finding.title,
-      description: finding.description,
-    });
+    const fingerprintId = await fingerprintFinding(
+      {
+        owner,
+        repo,
+        filePath: finding.file,
+        category: finding.category,
+        title: finding.title,
+        description: finding.description,
+      },
+      db
+    );
 
     detectedFingerprintIds.push(fingerprintId);
 
-    await query(
+    await db.query(
       `INSERT INTO findings
          (review_id, pull_request_id, category, severity, file_path, line_number, title, description, recommendation, fingerprint_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
@@ -134,8 +147,8 @@ async function insertFindings(reviewId, pullRequestId, findings, owner, repo) {
   return detectedFingerprintIds;
 }
 
-async function completeReview(reviewId, { model, partialAnalysis, skippedFiles }) {
-  await query(
+async function completeReview(reviewId, { model, partialAnalysis, skippedFiles }, db = { query }) {
+  await db.query(
     `UPDATE reviews
      SET status = 'completed', model = $1, partial_analysis = $2, skipped_files = $3, completed_at = now()
      WHERE id = $4`,
@@ -150,4 +163,4 @@ async function failReview(reviewId, errorMessage) {
   );
 }
 
-module.exports = { createReview, createQueuedReview, processQueuedReview };
+module.exports = { createReview, createQueuedReview, processQueuedReview, failReview };

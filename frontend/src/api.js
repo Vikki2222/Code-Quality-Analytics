@@ -33,5 +33,6 @@ export const api = {
 };
 
 export function loginWithGitHub() {
-  window.location.href = 'http://localhost/api/auth/github';
+  // Relative so it works on whatever host serves the app (nginx proxies /api).
+  window.location.href = `${BASE}/auth/github`;
 }

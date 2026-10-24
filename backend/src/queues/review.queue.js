@@ -12,10 +12,12 @@ const reviewQueue = new Queue('review-analysis', { connection });
  * Enqueue a review job. Returns the BullMQ job id immediately - the
  * actual GitHub fetch + AI call happen later, in the worker process.
  */
-async function enqueueReview({ userId, accessToken, owner, repo, pullNumber, reviewId }) {
+async function enqueueReview({ userId, owner, repo, pullNumber, reviewId }) {
+  // No access token in job data - Redis stores it in plaintext (and keeps
+  // failed jobs around). The worker loads the encrypted token from the DB.
   const job = await reviewQueue.add(
       'analyze-pr',
-      { userId, accessToken, owner, repo, pullNumber, reviewId },
+      { userId, owner, repo, pullNumber, reviewId },
       {
           attempts: 2,
           backoff: { type: 'exponential', delay: 30000 }, // 30s, 60s between retries

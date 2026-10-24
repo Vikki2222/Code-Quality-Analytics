@@ -6,6 +6,7 @@ const { computeStructuralKey, findBestMatch } = require('../utils/fingerprint');
  * Given a new finding, determine which fingerprint group it belongs to
  * (creating a new one if it's genuinely new), and return that group's
  * id. This is the entry point Tier 1 + Tier 2 both feed into.
+ * `db` may be a transaction client (defaults to the shared pool).
  *
  * Order of checks (cheapest first):
  * 1. Tier 1 - exact structural key match (no API call, instant)
@@ -22,10 +23,10 @@ const { computeStructuralKey, findBestMatch } = require('../utils/fingerprint');
  * Revisit by scoping Tier 2 to repo+file only (dropping category) if
  * this proves to matter in practice.
  */
-async function fingerprintFinding({ owner, repo, filePath, category, title, description }) {
+async function fingerprintFinding({ owner, repo, filePath, category, title, description }, db = { query }) {
   const structuralKey = computeStructuralKey({ owner, repo, filePath, category, title });
 
-  const exactMatch = await query(
+  const exactMatch = await db.query(
     `SELECT * FROM finding_fingerprints
      WHERE repository_owner = $1 AND repository_name = $2 AND file_path = $3
        AND category = $4 AND structural_key = $5`,
@@ -33,10 +34,10 @@ async function fingerprintFinding({ owner, repo, filePath, category, title, desc
   );
 
   if (exactMatch.rows.length > 0) {
-    return recordOccurrence(exactMatch.rows[0].id);
+    return recordOccurrence(exactMatch.rows[0].id, db);
   }
 
-  const bucket = await query(
+  const bucket = await db.query(
     `SELECT * FROM finding_fingerprints
      WHERE repository_owner = $1 AND repository_name = $2 AND file_path = $3 AND category = $4`,
     [owner, repo, filePath, category]
@@ -46,10 +47,10 @@ async function fingerprintFinding({ owner, repo, filePath, category, title, desc
   const match = findBestMatch(newEmbedding, bucket.rows);
 
   if (match) {
-    return recordOccurrence(match.fingerprint.id);
+    return recordOccurrence(match.fingerprint.id, db);
   }
 
-  const created = await query(
+  const created = await db.query(
     `INSERT INTO finding_fingerprints
        (repository_owner, repository_name, file_path, category, structural_key, embedding, representative_title, occurrence_count, status)
      VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 'open')
@@ -65,8 +66,8 @@ async function fingerprintFinding({ owner, repo, filePath, category, title, desc
  * If it had been marked resolved, this occurrence flips it to
  * 'recurring' - the lifecycle transition the doc's design calls for.
  */
-async function recordOccurrence(fingerprintId) {
-  await query(
+async function recordOccurrence(fingerprintId, db = { query }) {
+  await db.query(
     `UPDATE finding_fingerprints
      SET occurrence_count = occurrence_count + 1,
          last_detected_at = now(),
@@ -87,10 +88,10 @@ async function recordOccurrence(fingerprintId) {
  * fingerprint for a file that wasn't touched by this PR shouldn't be
  * marked resolved just because this review didn't mention it.
  */
-async function markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds }) {
+async function markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds }, db = { query }) {
   if (analyzedFilePaths.length === 0) return;
 
-  const result = await query(
+  const result = await db.query(
     `UPDATE finding_fingerprints
      SET status = 'resolved'
      WHERE repository_owner = $1

@@ -24,17 +24,24 @@ export default function ReviewView({ owner, repo }) {
     setLoading(true);
     try {
       const { reviewId } = await api.createReview(owner, repo, pr.number);
-      for (let i = 0; i < 30; i++) {
+      // ~3 min: covers a failed first attempt + 30s retry backoff + second attempt.
+      let finished = false;
+      for (let i = 0; i < 90; i++) {
         const result = await api.getReview(reviewId);
         if (result.status === 'completed') {
           setReview(result);
+          finished = true;
           break;
         }
         if (result.status === 'failed') {
           setError(result.errorMessage || 'Review failed');
+          finished = true;
           break;
         }
         await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (!finished) {
+        setError('Review is still running. Check the History tab in a few minutes.');
       }
     } catch (err) {
       setError(err.message);

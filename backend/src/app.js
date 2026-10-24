@@ -17,6 +17,11 @@ const { apiLimiter, reviewLimiter, authLimiter } = require('./middleware/rateLim
 
 const app = express();
 
+// Number of reverse proxies in front of Express. 1 locally (nginx);
+// 2 on Coolify (Traefik -> nginx). Needed so req.ip is the real client
+// (rate limiting keys on it) and req.secure reflects the original HTTPS.
+app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
+
 app.use(helmet());
 app.use((req, res, next) => {
   const start = Date.now();
@@ -43,7 +48,15 @@ app.use(
 
 // Webhook route MUST be before express.json() - needs raw body for
 // HMAC-SHA256 signature verification.
+// Webhooks are excluded from rate limiting: they're HMAC-verified and all
+// arrive from GitHub's IPs, so limiting by IP would drop real deliveries.
 app.use('/api/webhooks', webhookRoutes);
+
+// Limiters must be registered BEFORE the routers - Express runs middleware
+// in order, and a router that responds never reaches anything after it.
+app.use('/api/', apiLimiter);
+app.post('/api/reviews', reviewLimiter); // only creation costs AI calls; polling GETs must not hit this
+app.use('/api/auth', authLimiter);
 
 app.use(express.json());
 
@@ -63,7 +76,9 @@ app.use(
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: false, // http://localhost in Docker - secure requires HTTPS
+      // 'auto' = Secure flag whenever the original request was HTTPS
+      // (via trusted X-Forwarded-Proto). Works for http://localhost and prod.
+      secure: 'auto',
       sameSite: 'lax',
       maxAge: 1000 * 60 * 60 * 24 * 7,
     },
@@ -81,9 +96,6 @@ app.use('/api/auth', authRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/', apiLimiter);
-app.use('/api/reviews', reviewLimiter);
-app.use('/api/auth', authLimiter);
 
 app.use((err, req, res, next) => {
   logger.error({ err, method: req.method, url: req.url }, 'Unhandled error');

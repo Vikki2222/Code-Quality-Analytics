@@ -1,6 +1,7 @@
 const reviewService = require('../services/review.service');
 const { enqueueReview } = require('../queues/review.queue');
 const { query } = require('../config/db');
+const { hasRepoAccess } = require('../middleware/requireRepoAccess');
 
 async function createReview(req, res, next) {
   try {
@@ -20,7 +21,6 @@ async function createReview(req, res, next) {
 
     await enqueueReview({
       userId: req.user.id,
-      accessToken: req.user.github_access_token,
       owner,
       repo,
       pullNumber,
@@ -42,12 +42,24 @@ async function createReview(req, res, next) {
 async function getReview(req, res, next) {
   try {
     const { id } = req.params;
+    if (!/^\d+$/.test(id)) {
+      return res.status(400).json({ error: 'Invalid review id' });
+    }
 
-    const reviewResult = await query('SELECT * FROM reviews WHERE id = $1', [id]);
-    if (reviewResult.rows.length === 0) {
+    const reviewResult = await query(
+      `SELECT r.*, pr.repository_owner, pr.repository_name
+       FROM reviews r
+       JOIN pull_requests pr ON pr.id = r.pull_request_id
+       WHERE r.id = $1`,
+      [id]
+    );
+    const review = reviewResult.rows[0];
+
+    // Same 404 for "doesn't exist" and "not yours" - don't reveal which
+    // review ids exist on other users' private repos.
+    if (!review || !(await hasRepoAccess(req.user, review.repository_owner, review.repository_name))) {
       return res.status(404).json({ error: 'Review not found' });
     }
-    const review = reviewResult.rows[0];
 
     const findingsResult = await query(
       `SELECT f.*, fp.occurrence_count, fp.status AS fingerprint_status, fp.first_detected_at
@@ -66,6 +78,9 @@ async function getReview(req, res, next) {
       findings: findingsResult.rows,
     });
   } catch (err) {
+    if (err.response && err.response.status === 401) {
+      return res.status(401).json({ error: 'GitHub authorization expired. Please log in again.' });
+    }
     next(err);
   }
 }

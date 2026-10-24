@@ -1,5 +1,6 @@
 jest.mock('../config/db', () => ({
   query: jest.fn(),
+  withTransaction: jest.fn(),
 }));
 
 jest.mock('../services/github.service', () => ({
@@ -16,7 +17,7 @@ jest.mock('../services/fingerprint.service', () => ({
   markResolvedFindings: jest.fn(),
 }));
 
-const { query } = require('../config/db');
+const { query, withTransaction } = require('../config/db');
 const githubService = require('../services/github.service');
 const aiService = require('../services/ai.service');
 const { fingerprintFinding, markResolvedFindings } = require('../services/fingerprint.service');
@@ -65,6 +66,8 @@ beforeEach(() => {
   aiService.analyzeDiff.mockResolvedValue({ findings: MOCK_FINDINGS, model: 'gemini-3.6-flash' });
   fingerprintFinding.mockResolvedValue(42);
   markResolvedFindings.mockResolvedValue([]);
+  // Run the transaction body against the same query mock so SQL assertions still apply.
+  withTransaction.mockImplementation((fn) => fn({ query }));
 
   query.mockImplementation((sql) => {
     if (sql.includes('INSERT INTO pull_requests')) return { rows: [{ id: 1 }] };
@@ -107,7 +110,8 @@ describe('processQueuedReview', () => {
         repo: 'workshop',
         filePath: 'src/auth.js',
         category: 'security',
-      })
+      }),
+      expect.anything()
     );
   });
 
@@ -134,7 +138,8 @@ describe('processQueuedReview', () => {
         repo: 'workshop',
         analyzedFilePaths: expect.arrayContaining(['src/auth.js']),
         detectedFingerprintIds: expect.arrayContaining([42]),
-      })
+      }),
+      expect.anything()
     );
   });
 
@@ -164,5 +169,31 @@ describe('processQueuedReview', () => {
       (call) => call[0].includes('UPDATE reviews') && call[0].includes('completed')
     );
     expect(completeCall).toBeDefined();
+  });
+  test('does not mark review failed on a non-final attempt (BullMQ will retry)', async () => {
+    aiService.analyzeDiff.mockRejectedValue(new Error('AI timeout'));
+    await expect(reviewService.processQueuedReview({ ...args, isFinalAttempt: false })).rejects.toThrow('AI timeout');
+    const failCall = query.mock.calls.find(
+      (call) => call[0].includes('UPDATE reviews') && call[0].includes('failed')
+    );
+    expect(failCall).toBeUndefined();
+  });
+
+  test('writes findings, resolution and completion inside one transaction', async () => {
+    const txQuery = jest.fn(() => ({ rows: [] }));
+    withTransaction.mockImplementation((fn) => fn({ query: txQuery }));
+    await reviewService.processQueuedReview(args);
+    expect(withTransaction).toHaveBeenCalledTimes(1);
+    expect(txQuery.mock.calls.some((c) => c[0].includes('INSERT INTO findings'))).toBe(true);
+    expect(txQuery.mock.calls.some((c) => c[0].includes('UPDATE reviews') && c[0].includes('completed'))).toBe(true);
+    expect(fingerprintFinding).toHaveBeenCalledWith(expect.any(Object), { query: txQuery });
+    // Nothing written for findings outside the transaction
+    expect(query.mock.calls.some((c) => c[0].includes('INSERT INTO findings'))).toBe(false);
+  });
+
+  test('marks failed and does not complete when the transaction fails on the final attempt', async () => {
+    withTransaction.mockRejectedValue(new Error('embedding failed'));
+    await expect(reviewService.processQueuedReview(args)).rejects.toThrow('embedding failed');
+    expect(query.mock.calls.some((c) => c[0].includes('UPDATE reviews') && c[0].includes('failed'))).toBe(true);
   });
 });
