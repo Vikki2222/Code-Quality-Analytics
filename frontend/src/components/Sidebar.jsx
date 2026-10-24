@@ -10,15 +10,14 @@ export default function Sidebar({
   onLogout,
 }) {
   return (
+    // Full-width header block on phones, fixed 240px column from md up.
     <aside
+      className="w-full md:w-60 md:min-h-screen shrink-0 border-b md:border-b-0 md:border-r"
       style={{
-        width: 240,
-        minHeight: '100vh',
         background: 'var(--bg-surface)',
-        borderRight: '1px solid var(--border)',
+        borderColor: 'var(--border)',
         display: 'flex',
         flexDirection: 'column',
-        flexShrink: 0,
       }}
     >
       <div style={{ padding: '20px 16px 16px', borderBottom: '1px solid var(--border)' }}>
@@ -40,7 +39,7 @@ export default function Sidebar({
               letterSpacing: '-0.3px',
             }}
           >
-            cq·analytics
+            Chronicles
           </span>
         </div>
         {user && (
@@ -56,7 +55,10 @@ export default function Sidebar({
       </div>
 
       {repos.length > 0 && (
-        <div style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}>
+        <div
+          className="max-h-48 md:max-h-none overflow-y-auto"
+          style={{ padding: '12px 0', borderBottom: '1px solid var(--border)' }}
+        >
           <div
             style={{
               padding: '4px 16px 8px',

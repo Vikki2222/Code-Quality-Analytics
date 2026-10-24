@@ -6,9 +6,13 @@ const OpenAI = require('openai');
 const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: 'https://openrouter.ai/api/v1',  // with /v1
+  // SDK default is 10 min x 2 retries - one hung free-tier model would
+  // hold a worker slot for ~30 min. BullMQ retries the whole job anyway.
+  timeout: 90 * 1000,
+  maxRetries: 1,
   defaultHeaders: {
     'HTTP-Referer': 'https://github.com/Vikki2222/code-quality-analytics',
-    'X-Title': 'Code Quality Analytics',
+    'X-Title': 'Chronicles',
   },
 });
 
@@ -17,6 +21,8 @@ const client = new OpenAI({
 const geminiClient = new OpenAI({
   apiKey: process.env.GEMINI_API_KEY,
   baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+  timeout: 15 * 1000,
+  maxRetries: 2,
 });
 
 const VALID_CATEGORIES = ['security', 'reliability', 'performance', 'maintainability', 'testing', 'scalability'];
@@ -76,7 +82,12 @@ async function analyzeDiff(filesToAnalyze, { model = 'openrouter/free' } = {}) {
     temperature: 0.2,
   });
 
-  const raw = response.choices[0].message.content;
+  // Free models sometimes return no choices or null content (e.g. a
+  // content filter) - fail with a readable message, not a TypeError.
+  const raw = response.choices && response.choices[0] && response.choices[0].message.content;
+  if (!raw) {
+    throw new Error(`AI returned an empty response (model: ${response.model || model})`);
+  }
   return parseAndValidateFindings(raw, model);
 }
 
@@ -126,4 +137,4 @@ async function getEmbedding(text) {
   return response.data[0].embedding;
 }
 
-module.exports = { analyzeDiff, getEmbedding };
+module.exports = { analyzeDiff, getEmbedding, parseAndValidateFindings };

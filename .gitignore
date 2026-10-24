@@ -31,3 +31,5 @@ backend/test-*.js
 
 postgres_data/
 redis_data/
+# graphify per-session cache (machine-local)
+graphify-out/cache/

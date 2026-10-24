@@ -1,5 +1,7 @@
 export default function Hotspots({ hotspots }) {
-  if (!hotspots?.length) return null;
+  if (!hotspots?.length) {
+    return <div style={{ padding: '16px 0', color: 'var(--text-muted)', fontSize: 13 }}>No hotspots yet.</div>;
+  }
   const max = Math.max(...hotspots.map((h) => h.findingCount));
 
   return (

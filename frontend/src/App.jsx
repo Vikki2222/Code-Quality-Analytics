@@ -1,31 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { api, loginWithGitHub } from './api';
 import Sidebar from './components/Sidebar';
-import AnalyticsView from './views/AnalyticsView';
-import ReviewView from './views/ReviewView';
-import HistoryView from './views/HistoryView';
+import ErrorBoundary from './components/ErrorBoundary';
+import StatusMessage from './components/StatusMessage';
+
+// Loaded on demand: recharts (AnalyticsView) is most of the bundle and the
+// login screen doesn't need it. A chunk that fails to load (e.g. stale
+// hashes after a deploy) is caught by the view's ErrorBoundary -> Reload.
+const VIEWS = {
+  analytics: lazy(() => import('./views/AnalyticsView')),
+  review: lazy(() => import('./views/ReviewView')),
+  history: lazy(() => import('./views/HistoryView')),
+};
 
 export default function App() {
   const [user, setUser] = useState(null);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [repos, setRepos] = useState([]);
+  const [reposError, setReposError] = useState(null);
+  const [loadingRepos, setLoadingRepos] = useState(false);
   const [selectedRepo, setSelectedRepo] = useState(null);
   const [activeView, setActiveView] = useState('analytics');
 
+  function loadRepos() {
+    setLoadingRepos(true);
+    setReposError(null);
+    return api.getRepositories()
+      .then((d) => setRepos(d.repositories))
+      .catch((err) => setReposError(err.message))
+      .finally(() => setLoadingRepos(false));
+  }
+
+  function resetToLoggedOut() {
+    setUser(null);
+    setRepos([]);
+    setSelectedRepo(null);
+  }
+
   useEffect(() => {
     api.getCurrentUser()
-      .then(u => { setUser(u); return api.getRepositories(); })
-      .then(d => setRepos(d.repositories))
-      .catch((err) => {
-        if (err.status === 401 || !err.status) setUser(null);
+      .then((u) => {
+        setUser(u);
+        return loadRepos();
       })
+      .catch(() => setUser(null))
       .finally(() => setCheckingAuth(false));
+
+    // Fired by api.js on any 401 after login (session or GitHub token expired).
+    window.addEventListener('auth:expired', resetToLoggedOut);
+    return () => window.removeEventListener('auth:expired', resetToLoggedOut);
   }, []);
 
   function handleSelectRepo(repo) {
     setSelectedRepo(repo);
     setActiveView('analytics');
   }
+
+  const ActiveView = VIEWS[activeView];
+  // Changing repo or view remounts the view (fresh state, no stale data
+  // from the previous repo) and resets its error boundary.
+  const viewKey = selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}/${activeView}` : null;
 
   if (checkingAuth) {
     return (
@@ -45,7 +79,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh' }}>
+    <div className="flex flex-col md:flex-row min-h-screen">
       {user && (
         <Sidebar
           user={user}
@@ -55,47 +89,53 @@ export default function App() {
           activeView={activeView}
           onChangeView={setActiveView}
           onLogout={() => {
-            api.logout();
-            setUser(null);
-            setRepos([]);
-            setSelectedRepo(null);
+            // Clear locally even if the request fails - the user asked to leave.
+            api.logout().catch(() => {});
+            resetToLoggedOut();
           }}
         />
       )}
 
-      <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+      <main className="flex-1 min-w-0 flex flex-col">
         {!user && <LoginScreen />}
 
         {user && !selectedRepo && (
-          <div style={{
-            flex: 1,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'var(--text-muted)',
-            fontSize: 13,
-            fontFamily: 'var(--font-ui)',
-          }}>
-            Select a repository from the sidebar
+          <div className="flex-1 flex items-center justify-center">
+            {loadingRepos ? (
+              <StatusMessage>Loading repositories...</StatusMessage>
+            ) : reposError ? (
+              <StatusMessage tone="error" onRetry={loadRepos}>
+                Could not load your repositories: {reposError}
+              </StatusMessage>
+            ) : repos.length === 0 ? (
+              <StatusMessage>No repositories found on your GitHub account.</StatusMessage>
+            ) : (
+              <StatusMessage>Select a repository to get started</StatusMessage>
+            )}
           </div>
         )}
 
-        {user && selectedRepo && activeView === 'analytics' && (
-          <AnalyticsView owner={selectedRepo.owner} repo={selectedRepo.name} />
-        )}
-        {user && selectedRepo && activeView === 'review' && (
-          <ReviewView owner={selectedRepo.owner} repo={selectedRepo.name} />
-        )}
-        {user && selectedRepo && activeView === 'history' && (
-          <HistoryView owner={selectedRepo.owner} repo={selectedRepo.name} />
+        {user && selectedRepo && (
+          <ErrorBoundary key={viewKey}>
+            <Suspense fallback={<StatusMessage>Loading...</StatusMessage>}>
+              <ActiveView owner={selectedRepo.owner} repo={selectedRepo.name} />
+            </Suspense>
+          </ErrorBoundary>
         )}
       </main>
     </div>
   );
 }
 
+const LOGIN_ERRORS = {
+  github_auth_failed: 'GitHub sign-in was cancelled or failed. Please try again.',
+};
+
 function LoginScreen() {
   const [hovered, setHovered] = useState(false);
+  // Set by the OAuth callback's failureRedirect (/login?error=...).
+  const errorCode = new URLSearchParams(window.location.search).get('error');
+  const loginError = errorCode && (LOGIN_ERRORS[errorCode] || 'Sign-in failed. Please try again.');
 
   return (
     <div style={{
@@ -142,7 +182,7 @@ function LoginScreen() {
           marginBottom: 16,
           textAlign: 'center',
         }}>
-          cq·analytics
+          Chronicles
         </div>
 
         {/* Accent rule — one structural element, not decoration */}
@@ -166,6 +206,26 @@ function LoginScreen() {
         }}>
           Track systemic code quality issues across your GitHub repositories over time.
         </p>
+
+        {loginError && (
+          <div
+            role="alert"
+            style={{
+              width: '100%',
+              marginTop: -20,
+              marginBottom: 20,
+              padding: '10px 14px',
+              fontSize: 13,
+              color: 'var(--danger)',
+              background: 'rgba(248,81,73,0.08)',
+              border: '1px solid rgba(248,81,73,0.2)',
+              borderRadius: 6,
+              textAlign: 'center',
+            }}
+          >
+            {loginError}
+          </div>
+        )}
 
         {/* GitHub connect button — the only CTA, can't be missed */}
         <button

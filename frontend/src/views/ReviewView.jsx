@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../api';
 import FindingCard from '../components/FindingCard';
 
@@ -9,12 +9,25 @@ export default function ReviewView({ owner, repo }) {
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [listError, setListError] = useState(null);
+  // Stops the polling loop if the user navigates away mid-review.
+  const unmounted = useRef(false);
+  useEffect(() => {
+    // Reset on setup too: StrictMode runs setup -> cleanup -> setup in dev.
+    unmounted.current = false;
+    return () => {
+      unmounted.current = true;
+    };
+  }, []);
 
   useEffect(() => {
-    api.getPullRequests(owner, repo).then((data) => {
-      setPullRequests(data.pullRequests);
-      setLoaded(true);
-    });
+    api.getPullRequests(owner, repo)
+      .then((data) => {
+        setPullRequests(data.pullRequests);
+        setListError(null);
+      })
+      .catch((err) => setListError(err.message))
+      .finally(() => setLoaded(true));
   }, [owner, repo]);
 
   async function runReview(pr) {
@@ -24,17 +37,25 @@ export default function ReviewView({ owner, repo }) {
     setLoading(true);
     try {
       const { reviewId } = await api.createReview(owner, repo, pr.number);
-      for (let i = 0; i < 30; i++) {
+      // ~3 min: covers a failed first attempt + 30s retry backoff + second attempt.
+      let finished = false;
+      for (let i = 0; i < 90; i++) {
+        if (unmounted.current) return;
         const result = await api.getReview(reviewId);
         if (result.status === 'completed') {
           setReview(result);
+          finished = true;
           break;
         }
         if (result.status === 'failed') {
           setError(result.errorMessage || 'Review failed');
+          finished = true;
           break;
         }
         await new Promise((r) => setTimeout(r, 2000));
+      }
+      if (!finished) {
+        setError('Review is still running. Check the History tab in a few minutes.');
       }
     } catch (err) {
       setError(err.message);
@@ -44,10 +65,18 @@ export default function ReviewView({ owner, repo }) {
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '280px 1fr', height: '100%', minHeight: 'calc(100vh - 1px)' }}>
-      <div style={{ borderRight: '1px solid var(--border)', padding: '16px 0', overflowY: 'auto' }}>
+    <div className="grid grid-cols-1 md:grid-cols-[280px_1fr] md:min-h-[calc(100vh-1px)]">
+      <div
+        className="max-h-72 md:max-h-none overflow-y-auto border-b md:border-b-0 md:border-r"
+        style={{ borderColor: 'var(--border)', padding: '16px 0' }}
+      >
         <div style={{ padding: '4px 16px 10px', fontSize: 11, color: 'var(--text-muted)' }}>Pull requests</div>
-        {pullRequests.length === 0 && loaded && (
+        {listError && (
+          <div style={{ padding: '8px 16px', fontSize: 13, color: 'var(--danger)' }}>
+            Could not load pull requests: {listError}
+          </div>
+        )}
+        {pullRequests.length === 0 && loaded && !listError && (
           <div style={{ padding: '8px 16px', fontSize: 13, color: 'var(--text-muted)' }}>
             No pull requests found.
           </div>
@@ -75,7 +104,7 @@ export default function ReviewView({ owner, repo }) {
         ))}
       </div>
 
-      <div style={{ padding: 24, overflowY: 'auto' }}>
+      <div className="p-4 md:p-6" style={{ overflowY: 'auto' }}>
         {!selectedPR && (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, paddingTop: 48, textAlign: 'center' }}>
             Select a pull request to run a review

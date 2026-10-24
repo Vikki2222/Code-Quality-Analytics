@@ -1,4 +1,4 @@
-# Code Quality Analytics
+# Chronicles
 
 An AI-powered engineering intelligence platform that transforms individual GitHub PR reviews into persistent, structured findings — tracking recurring issues, code quality hotspots, and engineering trends across a repository over time.
 
@@ -39,7 +39,7 @@ Redis + BullMQ (review-analysis queue)
 Background Worker (separate Node.js process)
   ├── Fetch PR diff via GitHub API
   ├── Filter/rank/budget files (diffBudget.js)
-  ├── Call Gemini AI → structured findings JSON
+  ├── Call LLM via OpenRouter → structured findings JSON
   ├── Two-tier fingerprinting (structural hash → embedding similarity)
   └── Persist to PostgreSQL (findings, fingerprints, lifecycle status)
         │
@@ -78,6 +78,9 @@ A token budget pipeline runs before any AI call: filter out vendored/generated/b
 - Webhook payloads verified with HMAC-SHA256 + `timingSafeEqual` (prevents timing attacks)
 - Rate limiting on all API endpoints (`express-rate-limit`), stricter limits on review creation
 - Idempotency on webhook deliveries — duplicate GitHub retries don't create duplicate reviews
+- Repo-level access control: history, analytics and review results are only returned if the user can see the repo on GitHub (checked with their token, cached 5 min)
+- OAuth `state` parameter (login CSRF protection); tokens and OAuth codes are kept out of logs
+- Access tokens are never placed in queue (Redis) job data — the worker loads them from the DB
 
 ---
 
@@ -90,45 +93,45 @@ A token budget pipeline runs before any AI call: filter out vendored/generated/b
 | Database | PostgreSQL (raw SQL, no ORM) |
 | Queue | Redis, BullMQ |
 | Auth | GitHub OAuth via Passport.js |
-| AI | Google Gemini (`gemini-3.6-flash`) via OpenAI-compatible endpoint |
+| AI | OpenRouter (free-tier models) for PR analysis; Google Gemini `gemini-embedding-001` for embeddings |
 | Embeddings | `gemini-embedding-001` for Tier 2 fingerprint similarity |
 | Logging | pino (structured JSON logs) |
-| Testing | Jest (46 tests across fingerprinting, diff budgeting, review pipeline) |
+| Testing | Jest unit tests (fingerprinting, diff budgeting, review pipeline, worker, webhook, auth/access middleware, migrations) |
 
 ---
 
 ## Local setup
 
-### Prerequisites
-- Node.js 18+
-- PostgreSQL
-- Redis
+### Quick start (Docker)
 
-### Backend
+```bash
+cp .env.example .env    # fill in the secrets; see comments in the file
+docker compose up --build
+```
+
+App: `http://localhost`. Migrations run automatically when the API starts.
+`docker-compose.override.yml` (local only) publishes ports 80 and 4000.
+For production on Coolify, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
+### Without Docker
+
+Prerequisites: Node.js 20+, PostgreSQL, Redis.
 
 ```bash
 cd backend
 npm install
+cp ../.env.example .env
 ```
 
-Create `.env` from `.env.example` and fill in:
-```
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/code_quality_analytics
-SESSION_SECRET=<long random string>
-GITHUB_CLIENT_ID=<from github.com/settings/developers>
-GITHUB_CLIENT_SECRET=<from github.com/settings/developers>
-GITHUB_CALLBACK_URL=http://localhost:4000/api/auth/github/callback
-FRONTEND_URL=http://localhost:5173
-REDIS_URL=redis://localhost:6379
-GEMINI_API_KEY=<from aistudio.google.com>
-TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
-GITHUB_WEBHOOK_SECRET=<openssl rand -hex 32>
-```
+Fill in `.env` — `.env.example` documents every variable. The API and worker refuse
+to start and list anything missing or malformed. For this setup use
+`FRONTEND_URL=http://localhost:5173` and
+`GITHUB_CALLBACK_URL=http://localhost:4000/api/auth/github/callback`.
 
-Initialize the database:
+Create the database (the schema is applied automatically: the API runs any pending
+`backend/src/migrations/*.sql` files on startup):
 ```bash
 createdb code_quality_analytics
-sudo -u postgres psql code_quality_analytics -f src/config/schema.sql
 ```
 
 Run the API server and worker in separate terminals:
@@ -169,23 +172,25 @@ Expose your local server with `ngrok http 4000`, then register a webhook on any 
 ## Known limitations / deliberate tradeoffs
 
 - **Fingerprint category scoping:** Tier 2 similarity is scoped per `repo + file + category`. If the AI categorizes the same underlying issue differently on separate runs (e.g., `readability` vs `maintainability`), fingerprinting won't merge them. Documented in `fingerprint.service.js`. Accepted tradeoff: the AI's categorization inconsistency is upstream of the matching logic.
-- **Repo picker shows owned repos only:** GitHub's `/user/repos` returns repos you own. Collaborator/org repos are intentionally out of scope per the MVP definition (doc section 4).
+- **Repo picker shows the 30 most recently pushed repos:** GitHub's `/user/repos` returns owned, collaborator and org-member repos; only the first page is loaded (no pagination UI yet).
 - **Embeddings in JSONB, not pgvector:** At this scale (one user, handful of repos), comparing a few candidate embeddings in application code is fast enough. pgvector is the obvious next step if this scales to many repos/orgs.
-- **Webhook user resolution by repo owner:** Webhooks look up the user whose `username` matches the repo owner. Works for repos you own; doesn't generalize to org repos where the triggering user isn't the owner.
+- **Webhook user resolution by repo owner:** Webhooks look up the connected user whose GitHub account id matches the repo owner. Works for repos you own; org-owned repos never match (supporting them properly needs a GitHub App).
 
 ---
 
 ## What's next
 
 - [ ] pgvector for Tier 2 embedding storage and similarity search at scale
-- [ ] Multi-user / organization support
+- [ ] GitHub App instead of OAuth app: webhook reviews for org-owned repos and narrower permissions than the `repo` scope
 - [ ] PR diff pagination for repos with very large PRs (>100 changed files)
 - [ ] Persistent webhook URL (currently requires ngrok for local dev)
-- [ ] Docker + CI/CD pipeline
-- [ ] Deployment (Railway / Render / AWS)
+- [x] Docker Compose stack (API, worker, nginx, Postgres, Redis)
+- [ ] CI pipeline running tests on every PR
+- [ ] Production deployment on Coolify (runbook: [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md))
+- [ ] Repo picker pagination / search
 
 ---
 
 ## Resume summary
 
-> Built an AI-assisted GitHub code-quality intelligence platform that analyzes pull-request diffs, converts Gemini AI reviews into structured persistent findings, and tracks recurring issues, repository hotspots, technical debt, and quality trends over time using React, Node.js, PostgreSQL, Redis, BullMQ, GitHub APIs, and the Gemini API. Implemented two-tier fingerprint deduplication (structural hashing + embedding similarity), an async job architecture with retry/backoff, AES-256-GCM token encryption, HMAC-verified webhooks, and a deterministic health scoring system.
+> Built Chronicles, an AI-assisted GitHub code-quality intelligence platform that analyzes pull-request diffs, converts LLM reviews (via OpenRouter) into structured persistent findings, and tracks recurring issues, repository hotspots, technical debt, and quality trends over time using React, Node.js, PostgreSQL, Redis, BullMQ, GitHub APIs, OpenRouter, and Gemini embeddings. Implemented two-tier fingerprint deduplication (structural hashing + embedding similarity), an async job architecture with retry/backoff, AES-256-GCM token encryption, HMAC-verified webhooks, and a deterministic health scoring system.

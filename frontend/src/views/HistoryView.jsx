@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api';
 import FindingCard from '../components/FindingCard';
+import StatusMessage from '../components/StatusMessage';
+
+const STATUS_COLORS = { completed: 'var(--success)', failed: 'var(--danger)' };
 
 function timeAgo(dateStr) {
   if (!dateStr) return '—';
@@ -18,31 +21,60 @@ export default function HistoryView({ owner, repo }) {
   const [selectedReview, setSelectedReview] = useState(null);
   const [reviewData, setReviewData] = useState(null);
   const [loadingReview, setLoadingReview] = useState(false);
+  const [error, setError] = useState(null);
+  const [reviewError, setReviewError] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  // Views remount per repo (App keys them), so initial state already says
+  // "loading"; only a retry needs to reset it.
+  function retry() {
+    setLoading(true);
+    setError(null);
+    setReloadKey((k) => k + 1);
+  }
 
   useEffect(() => {
-    setLoading(true);
     api
       .getRepoHistory(owner, repo)
       .then((d) => setHistory(d.reviews))
+      .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  }, [owner, repo]);
+  }, [owner, repo, reloadKey]);
 
   async function loadReview(reviewId) {
     setSelectedReview(reviewId);
+    setReviewData(null);
+    setReviewError(null);
     setLoadingReview(true);
-    const data = await api.getReview(reviewId);
-    setReviewData(data);
-    setLoadingReview(false);
+    try {
+      const data = await api.getReview(reviewId);
+      setReviewData(data);
+    } catch (err) {
+      setReviewError(err.message);
+    } finally {
+      setLoadingReview(false);
+    }
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '300px 1fr', minHeight: 'calc(100vh - 1px)' }}>
-      <div style={{ borderRight: '1px solid var(--border)', padding: '16px 0', overflowY: 'auto' }}>
-        <div style={{ padding: '4px 16px 10px', fontSize: 11, color: 'var(--text-muted)' }}>
-          {history.length} reviews
-        </div>
-        {loading && (
-          <div style={{ padding: '8px 16px', fontSize: 12, color: 'var(--text-muted)' }}>Loading...</div>
+    <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] md:min-h-[calc(100vh-1px)]">
+      <div
+        className="max-h-72 md:max-h-none overflow-y-auto border-b md:border-b-0 md:border-r"
+        style={{ borderColor: 'var(--border)', padding: '16px 0' }}
+      >
+        {!loading && !error && (
+          <div style={{ padding: '4px 16px 10px', fontSize: 11, color: 'var(--text-muted)' }}>
+            {history.length} {history.length === 1 ? 'review' : 'reviews'}
+          </div>
+        )}
+        {loading && <StatusMessage>Loading...</StatusMessage>}
+        {error && (
+          <StatusMessage tone="error" onRetry={retry}>
+            Could not load history: {error}
+          </StatusMessage>
+        )}
+        {!loading && !error && history.length === 0 && (
+          <StatusMessage>No reviews yet. Run one from the Run Review tab.</StatusMessage>
         )}
         {history.map((r) => (
           <button
@@ -62,7 +94,7 @@ export default function HistoryView({ owner, repo }) {
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--text-muted)' }}>
                 #{r.pr_number}
               </span>
-              <span style={{ fontSize: 10, color: r.status === 'completed' ? 'var(--success)' : 'var(--danger)' }}>
+              <span style={{ fontSize: 10, color: STATUS_COLORS[r.status] || 'var(--warning)' }}>
                 {r.status}
               </span>
             </div>
@@ -87,8 +119,8 @@ export default function HistoryView({ owner, repo }) {
         ))}
       </div>
 
-      <div style={{ padding: 24, overflowY: 'auto' }}>
-        {!selectedReview && (
+      <div className="p-4 md:p-6" style={{ overflowY: 'auto' }}>
+        {!selectedReview && history.length > 0 && (
           <div style={{ color: 'var(--text-muted)', fontSize: 13, paddingTop: 48, textAlign: 'center' }}>
             Select a review to see its findings
           </div>
@@ -105,6 +137,11 @@ export default function HistoryView({ owner, repo }) {
           >
             Loading...
           </div>
+        )}
+        {reviewError && (
+          <StatusMessage tone="error" onRetry={() => loadReview(selectedReview)}>
+            Could not load this review: {reviewError}
+          </StatusMessage>
         )}
         {reviewData && !loadingReview && (
           <>

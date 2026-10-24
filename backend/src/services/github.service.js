@@ -63,6 +63,25 @@ async function getPullRequestFiles(accessToken, owner, repo, pullNumber, { page 
   return response.data.map(mapPullRequestFile);
 }
 
+/**
+ * Whether the token's user can see this repository. GitHub returns 404
+ * (not 403) for private repos you can't access. 401 is re-thrown so
+ * callers can prompt a re-login.
+ */
+async function canAccessRepository(accessToken, owner, repo) {
+  const client = githubClient(accessToken);
+  try {
+    const response = await client.get(`/repos/${owner}/${repo}`);
+    logRateLimit(response);
+    return true;
+  } catch (err) {
+    if (err.response && (err.response.status === 404 || err.response.status === 403)) {
+      return false;
+    }
+    throw err;
+  }
+}
+
 function mapPullRequestFile(file) {
   return {
     filename: file.filename,
@@ -113,4 +132,5 @@ module.exports = {
   listPullRequests,
   getPullRequest,
   getPullRequestFiles,
+  canAccessRepository,
 };

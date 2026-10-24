@@ -1,52 +1,67 @@
-# Code Quality Analytics — Backend (Phase 1: Foundation)
+# Backend
 
-## What's here
-- Express server with GitHub OAuth (via Passport) as the sole identity provider
-- PostgreSQL connection (raw `pg`, no ORM — kept simple until there's a real reason to add one)
-- `users` table only — other tables are added in later phases when they're actually needed
+Express API + BullMQ worker. Project overview, architecture and design
+decisions are in the root `README.md`; production deployment in
+`docs/DEPLOYMENT.md`.
 
-## Setup
+## Layout
 
-1. Install dependencies:
-   ```
-   npm install
-   ```
+```
+src/
+  app.js                 API entry: middleware order, /health, startup + graceful shutdown
+  workers/review.worker.js  Worker entry: consumes review jobs (separate process)
+  config/                env validation, db pool + withTransaction, pino logger, passport
+  middleware/            requireAuth, requireRepoAccess (+ param validation),
+                         verifyGitHubSignature, rate limiters
+  routes/ controllers/   HTTP layer (thin)
+  services/              review pipeline, fingerprinting, analytics, GitHub + AI clients
+  queues/                BullMQ queue (producer side)
+  db/migrate.js          forward-only SQL migration runner
+  migrations/            numbered .sql files, applied in order on API boot
+  utils/                 diff budgeting, fingerprint math, AES-256-GCM token encryption
+  tests/                 Jest unit tests (no DB/Redis/network needed)
+```
 
-2. Create a Postgres database and run the schema:
-   ```
-   createdb code_quality_analytics
-   psql code_quality_analytics -f src/config/schema.sql
-   ```
+## Request flow (review)
 
-3. Copy `.env.example` to `.env` and fill in:
-   - `DATABASE_URL`
-   - `SESSION_SECRET` (any long random string)
-   - `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` — create an OAuth App at
-     https://github.com/settings/developers
-     - Homepage URL: `http://localhost:5173`
-     - Authorization callback URL: `http://localhost:4000/api/auth/github/callback`
-       (must match `GITHUB_CALLBACK_URL` exactly)
+`POST /api/reviews` → `createQueuedReview` (PR row + review row) → `enqueueReview`
+(job data has no token) → worker loads the user's token from the DB →
+`processQueuedReview`: fetch diff → filter/budget → AI → fingerprint + insert
+findings in one transaction → mark resolved → complete. Earlier attempts that fail
+leave the review `running` for BullMQ to retry; only the final attempt marks it `failed`.
 
-4. Run the dev server:
-   ```
-   npm run dev
-   ```
+Webhooks (`POST /api/webhooks/github`) follow the same path after HMAC verification
+and delivery-id idempotency.
 
-5. Verify:
-   - `GET http://localhost:4000/health` → `{ "status": "ok" }`
-   - Visit `http://localhost:4000/api/auth/github` in a browser → should
-     redirect to GitHub's OAuth consent screen → redirect back to
-     `FRONTEND_URL/dashboard` on success.
-   - `GET http://localhost:4000/api/auth/me` (with the session cookie) →
-     returns the logged-in user.
+## Running
 
-## Known Phase 1 shortcuts (intentional, revisit later)
-- Session store is in-memory (`express-session` default). Fine for local
-  dev; swap for `connect-pg-simple` or `connect-redis` before Phase 7.
-- `github_access_token` is stored in plaintext. Encrypt at rest before
-  any real deployment — flagged in `schema.sql`.
-- No rate limiting yet — add before exposing any public endpoint (Phase 7).
+Usually via Docker from the repo root: `docker compose up --build`
+(app on http://localhost, API debug port 4000 from `docker-compose.override.yml`).
 
-## Next
-Phase 1 also needs: GitHub API integration (list a user's repos) before
-moving to Phase 2 (PR review MVP). That's the next file to build.
+Without Docker (needs local Postgres + Redis):
+
+```
+npm install
+cp ../.env.example .env   # fill in values; startup fails fast listing anything missing
+createdb code_quality_analytics
+npm run dev               # API on :4000, runs pending migrations first
+npm run worker            # separate terminal
+npm test
+```
+
+`GET /health` returns 200 only when Postgres and Redis are reachable (503 otherwise).
+
+## Schema changes
+
+Add a new file `src/migrations/NNN_description.sql` (next number). It runs once,
+inside a transaction, on the next API start, and is recorded in `schema_migrations`.
+Never edit a migration that has already been applied anywhere.
+
+## Things to know
+
+- `TOKEN_ENCRYPTION_KEY` rotation makes stored GitHub tokens undecryptable; affected
+  users are logged out and must sign in again (no data loss).
+- Logs never include query strings, request bodies or tokens (see `config/logger.js`).
+  Every request has an `X-Request-Id`, also logged as `reqId`.
+- Express 4 does not catch rejected promises in async handlers: every async
+  handler must `try/catch` and call `next(err)` (or respond) itself.

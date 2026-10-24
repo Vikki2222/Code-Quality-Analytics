@@ -38,7 +38,7 @@ async function getPullRequestFiles(req, res, next) {
 async function getPullRequests(req, res, next) {
   try {
     const { owner, repo } = req.params;
-    const state = req.query.state || 'open';
+    const state = ['open', 'closed', 'all'].includes(req.query.state) ? req.query.state : 'open';
     const page = parseInt(req.query.page, 10) || 1;
     const pullRequests = await githubService.listPullRequests(req.user.github_access_token, owner, repo, {
       state,

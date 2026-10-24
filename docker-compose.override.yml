@@ -1,0 +1,10 @@
+# Local development only - `docker compose` merges this automatically.
+# Do NOT use it on Coolify: there Traefik owns ports 80/443 and routes by
+# domain, and the API must only be reachable through nginx.
+services:
+  api:
+    ports:
+      - "4000:4000"
+  frontend:
+    ports:
+      - "80:80"

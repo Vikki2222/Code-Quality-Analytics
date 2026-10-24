@@ -2,9 +2,10 @@ const rateLimit = require('express-rate-limit');
 
 // General API rate limit - generous enough for normal use, tight
 // enough to block a runaway script or basic abuse.
+// Sized for review polling (a GET every 2s for up to ~3 min per review).
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Too many requests, please try again later.' },
