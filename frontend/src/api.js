@@ -8,6 +8,11 @@ async function request(path, options = {}) {
   });
 
   if (!response.ok) {
+    // Session (or GitHub token) expired mid-use: App drops back to login.
+    // /auth/me is excluded - a 401 there is the normal "not logged in" check.
+    if (response.status === 401 && path !== '/auth/me') {
+      window.dispatchEvent(new Event('auth:expired'));
+    }
     const body = await response.json().catch(() => ({}));
     const error = new Error(body.error || `Request failed: ${response.status}`);
     error.status = response.status;

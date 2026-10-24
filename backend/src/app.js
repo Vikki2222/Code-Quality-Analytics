@@ -3,6 +3,7 @@ const { validateEnv, API_ENV } = require('./config/env');
 
 validateEnv(API_ENV);
 
+const crypto = require('crypto');
 const express = require('express');
 const session = require('express-session');
 const pgSession = require('connect-pg-simple')(session);
@@ -28,16 +29,29 @@ const app = express();
 app.set('trust proxy', parseInt(process.env.TRUST_PROXY_HOPS, 10) || 1);
 
 app.use(helmet());
+// Query strings are never logged: the OAuth callback carries GitHub's
+// one-time `code` and `state` there.
+function pathOf(req) {
+  return req.originalUrl.split('?')[0];
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
+  // Ties the request line to any error logged while handling it, and is
+  // returned to the client so a user-reported failure can be found.
+  req.id = crypto.randomUUID();
+  res.setHeader('X-Request-Id', req.id);
   res.on('finish', () => {
-    if (req.url === '/health') return; // skip healthcheck noise
+    const path = pathOf(req);
+    if (path === '/health') return; // skip healthcheck noise
     logger.info(
       {
+        reqId: req.id,
         method: req.method,
-        url: req.url,
+        path,
         status: res.statusCode,
         ms: Date.now() - start,
+        userId: req.user ? req.user.id : undefined,
       },
       'Request'
     );
@@ -128,7 +142,10 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
 app.use((err, req, res, next) => {
-  logger.error({ err, method: req.method, url: req.url }, 'Unhandled error');
+  logger.error(
+    { err, reqId: req.id, method: req.method, path: pathOf(req), userId: req.user ? req.user.id : undefined },
+    'Unhandled error'
+  );
   res.status(err.status || 500).json({
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
   });

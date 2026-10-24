@@ -5,6 +5,7 @@ function Metric({ value, label, color }) {
         padding: '16px 24px',
         borderRight: '1px solid var(--border)',
         flex: 1,
+        minWidth: 140, // wraps to 2x2 on narrow screens instead of squashing
       }}
     >
       <div
@@ -34,6 +35,7 @@ export default function HealthBar({ health }) {
     <div
       style={{
         display: 'flex',
+        flexWrap: 'wrap',
         background: 'var(--bg-surface)',
         borderBottom: '1px solid var(--border)',
         borderLeft: `3px solid ${scoreColor}`,

@@ -53,7 +53,10 @@ if (require.main === module) {
   });
 
   worker.on('completed', (job) => {
-    logger.info({ jobId: job.id }, 'Review job completed');
+    logger.info(
+      { jobId: job.id, reviewId: job.data.reviewId, ms: job.finishedOn - job.processedOn },
+      'Review job completed'
+    );
   });
 
   worker.on('failed', (job, err) => {

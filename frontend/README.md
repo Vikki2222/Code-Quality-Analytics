@@ -78,6 +78,9 @@ A token budget pipeline runs before any AI call: filter out vendored/generated/b
 - Webhook payloads verified with HMAC-SHA256 + `timingSafeEqual` (prevents timing attacks)
 - Rate limiting on all API endpoints (`express-rate-limit`), stricter limits on review creation
 - Idempotency on webhook deliveries — duplicate GitHub retries don't create duplicate reviews
+- Repo-level access control: history, analytics and review results are only returned if the user can see the repo on GitHub (checked with their token, cached 5 min)
+- OAuth `state` parameter (login CSRF protection); tokens and OAuth codes are kept out of logs
+- Access tokens are never placed in queue (Redis) job data — the worker loads them from the DB
 
 ---
 
@@ -93,7 +96,7 @@ A token budget pipeline runs before any AI call: filter out vendored/generated/b
 | AI | Google Gemini (`gemini-3.6-flash`) via OpenAI-compatible endpoint |
 | Embeddings | `gemini-embedding-001` for Tier 2 fingerprint similarity |
 | Logging | pino (structured JSON logs) |
-| Testing | Jest (46 tests across fingerprinting, diff budgeting, review pipeline) |
+| Testing | Jest unit tests (fingerprinting, diff budgeting, review pipeline, worker, webhook, auth/access middleware, migrations) |
 
 ---
 
@@ -125,10 +128,10 @@ TOKEN_ENCRYPTION_KEY=<openssl rand -hex 32>
 GITHUB_WEBHOOK_SECRET=<openssl rand -hex 32>
 ```
 
-Initialize the database:
+Create the database (the schema is applied automatically: the API runs any pending
+`backend/src/migrations/*.sql` files on startup):
 ```bash
 createdb code_quality_analytics
-sudo -u postgres psql code_quality_analytics -f src/config/schema.sql
 ```
 
 Run the API server and worker in separate terminals:
@@ -171,7 +174,7 @@ Expose your local server with `ngrok http 4000`, then register a webhook on any 
 - **Fingerprint category scoping:** Tier 2 similarity is scoped per `repo + file + category`. If the AI categorizes the same underlying issue differently on separate runs (e.g., `readability` vs `maintainability`), fingerprinting won't merge them. Documented in `fingerprint.service.js`. Accepted tradeoff: the AI's categorization inconsistency is upstream of the matching logic.
 - **Repo picker shows owned repos only:** GitHub's `/user/repos` returns repos you own. Collaborator/org repos are intentionally out of scope per the MVP definition (doc section 4).
 - **Embeddings in JSONB, not pgvector:** At this scale (one user, handful of repos), comparing a few candidate embeddings in application code is fast enough. pgvector is the obvious next step if this scales to many repos/orgs.
-- **Webhook user resolution by repo owner:** Webhooks look up the user whose `username` matches the repo owner. Works for repos you own; doesn't generalize to org repos where the triggering user isn't the owner.
+- **Webhook user resolution by repo owner:** Webhooks look up the connected user whose GitHub account id matches the repo owner. Works for repos you own; org-owned repos never match (supporting them properly needs a GitHub App).
 
 ---
 
