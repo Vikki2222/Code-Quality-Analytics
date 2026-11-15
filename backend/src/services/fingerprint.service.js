@@ -95,19 +95,19 @@ async function recordOccurrence(fingerprintId, db = { query }) {
  * fingerprint for a file that wasn't touched by this PR shouldn't be
  * marked resolved just because this review didn't mention it.
  */
-async function markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds }, db = { query }) {
+async function markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds, reviewId = null }, db = { query }) {
   if (analyzedFilePaths.length === 0) return;
 
   const result = await db.query(
     `UPDATE finding_fingerprints
-     SET status = 'resolved'
+     SET status = 'resolved', resolved_at = now(), resolved_by_review_id = $5
      WHERE repository_owner = $1
        AND repository_name = $2
        AND file_path = ANY($3)
        AND status IN ('open', 'recurring')
        AND NOT (id = ANY($4))
      RETURNING id, representative_title`,
-    [owner, repo, analyzedFilePaths, detectedFingerprintIds.length > 0 ? detectedFingerprintIds : [0]]
+    [owner, repo, analyzedFilePaths, detectedFingerprintIds.length > 0 ? detectedFingerprintIds : [0], reviewId]
   );
 
   return result.rows;

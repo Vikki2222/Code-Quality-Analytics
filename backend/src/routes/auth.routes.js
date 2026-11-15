@@ -10,7 +10,7 @@ router.get('/github', passport.authenticate('github'));
 // Step 2: GitHub redirects back here with a code; passport exchanges it
 router.get(
   '/github/callback',
-  passport.authenticate('github', { failureRedirect: `${process.env.FRONTEND_URL}/login?error=github_auth_failed` }),
+  passport.authenticate('github', { failureRedirect: `${process.env.FRONTEND_URL}/?error=github_auth_failed` }),
   authController.githubCallback
 );
 

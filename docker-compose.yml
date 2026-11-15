@@ -52,6 +52,7 @@ services:
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
       GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AI_MODEL: ${AI_MODEL:-google/gemma-4-31b-it:free}
       LOG_LEVEL: info
     depends_on:
       postgres:
@@ -80,6 +81,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       TOKEN_ENCRYPTION_KEY: ${TOKEN_ENCRYPTION_KEY}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY}
+      AI_MODEL: ${AI_MODEL:-google/gemma-4-31b-it:free}
       LOG_LEVEL: info
     depends_on:
       postgres:

@@ -59,7 +59,7 @@ describe('createReview', () => {
 });
 
 describe('getReview access control', () => {
-  const REVIEW_ROW = { id: 9, status: 'completed', repository_owner: 'victim', repository_name: 'private' };
+  const REVIEW_ROW = { id: 9, status: 'completed', pull_request_id: 4, repository_owner: 'victim', repository_name: 'private' };
 
   test('returns 400 for a non-numeric id without querying', async () => {
     const res = mockRes();
@@ -86,11 +86,24 @@ describe('getReview access control', () => {
   });
 
   test('returns the review with findings when the user has access', async () => {
-    query.mockResolvedValueOnce({ rows: [REVIEW_ROW] }).mockResolvedValueOnce({ rows: [{ id: 1 }] });
+    query
+      .mockResolvedValueOnce({ rows: [REVIEW_ROW] })
+      .mockResolvedValueOnce({ rows: [{ id: 1, is_new: true }] })
+      .mockResolvedValueOnce({ rows: [{ id: 7, representative_title: 'Fixed thing' }] })
+      .mockResolvedValueOnce({ rows: [{ number: 12, title: 'Add auth', author_username: 'octo' }] });
     githubService.canAccessRepository.mockResolvedValue(true);
     const res = mockRes();
     await getReview({ params: { id: '9' }, user: USER }, res, jest.fn());
     expect(res.status).not.toHaveBeenCalled();
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ reviewId: 9, findings: [{ id: 1 }] }));
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        reviewId: 9,
+        findings: [{ id: 1, is_new: true }],
+        resolvedIssues: [{ id: 7, representative_title: 'Fixed thing' }],
+        pullRequest: { number: 12, title: 'Add auth', author: 'octo' },
+        owner: 'victim',
+        repo: 'private',
+      })
+    );
   });
 });

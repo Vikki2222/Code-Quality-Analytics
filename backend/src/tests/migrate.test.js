@@ -1,5 +1,8 @@
 jest.mock('../config/logger', () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { runMigrations } = require('../db/migrate');
 
 // Fake pg pool: records SQL, reports `alreadyApplied` from schema_migrations,
@@ -58,5 +61,20 @@ describe('runMigrations', () => {
     const read = calls.findIndex((sql) => sql.startsWith('SELECT name FROM schema_migrations'));
     expect(lock).toBeGreaterThan(-1);
     expect(lock).toBeLessThan(read);
+  });
+
+  test('ignores .sql files not named NNN_description.sql (e.g. sync-conflict copies)', async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'migrations-'));
+    try {
+      fs.writeFileSync(path.join(dir, '001_create_a.sql'), 'CREATE TABLE a (id int);');
+      fs.writeFileSync(path.join(dir, '001_create_a 2.sql'), 'CREATE TABLE dup (id int);');
+      fs.writeFileSync(path.join(dir, 'notes.sql'), 'DROP TABLE a;');
+      const { pool, calls } = fakePool();
+      await runMigrations(pool, { dir });
+      expect(calls).toContain('CREATE TABLE a (id int);');
+      expect(calls.some((sql) => sql.includes('dup') || sql.includes('DROP TABLE'))).toBe(false);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

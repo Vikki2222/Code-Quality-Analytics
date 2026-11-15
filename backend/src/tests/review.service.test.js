@@ -12,6 +12,9 @@ jest.mock('../services/ai.service', () => ({
   analyzeDiff: jest.fn(),
 }));
 
+jest.mock('../services/analytics.service', () => ({ recordHealthSnapshot: jest.fn() }));
+jest.mock('../config/logger', () => ({ error: jest.fn(), warn: jest.fn(), info: jest.fn() }));
+
 jest.mock('../services/fingerprint.service', () => ({
   fingerprintFinding: jest.fn(),
   markResolvedFindings: jest.fn(),
@@ -21,6 +24,7 @@ const { query, withTransaction } = require('../config/db');
 const githubService = require('../services/github.service');
 const aiService = require('../services/ai.service');
 const { fingerprintFinding, markResolvedFindings } = require('../services/fingerprint.service');
+const { recordHealthSnapshot } = require('../services/analytics.service');
 const reviewService = require('../services/review.service');
 
 const MOCK_PR = {
@@ -195,5 +199,27 @@ describe('processQueuedReview', () => {
     withTransaction.mockRejectedValue(new Error('embedding failed'));
     await expect(reviewService.processQueuedReview(args)).rejects.toThrow('embedding failed');
     expect(query.mock.calls.some((c) => c[0].includes('UPDATE reviews') && c[0].includes('failed'))).toBe(true);
+  });
+
+  test('records a health snapshot after the review completes', async () => {
+    await reviewService.processQueuedReview(args);
+    expect(recordHealthSnapshot).toHaveBeenCalledWith('Vikki2222', 'workshop', 1);
+  });
+
+  test('passes the review id so resolved issues record what resolved them', async () => {
+    await reviewService.processQueuedReview(args);
+    expect(markResolvedFindings).toHaveBeenCalledWith(expect.objectContaining({ reviewId: 1 }), expect.anything());
+  });
+
+  test('a failed snapshot does not fail the completed review', async () => {
+    recordHealthSnapshot.mockRejectedValueOnce(new Error('db blip'));
+    await expect(reviewService.processQueuedReview(args)).resolves.toBeUndefined();
+    expect(query.mock.calls.some((c) => c[0].includes('UPDATE reviews') && c[0].includes('failed'))).toBe(false);
+  });
+
+  test('does not snapshot when the review fails', async () => {
+    aiService.analyzeDiff.mockRejectedValue(new Error('AI down'));
+    await expect(reviewService.processQueuedReview(args)).rejects.toThrow('AI down');
+    expect(recordHealthSnapshot).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,7 @@
 // Called after passport has already authenticated the GitHub callback.
 function githubCallback(req, res) {
   // req.user is populated by passport's deserializeUser via the session.
-  res.redirect(`${process.env.FRONTEND_URL}/dashboard`);
+  res.redirect(`${process.env.FRONTEND_URL}/repos`);
 }
 
 function logout(req, res, next) {

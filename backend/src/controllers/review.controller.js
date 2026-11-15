@@ -62,21 +62,49 @@ async function getReview(req, res, next) {
       return res.status(404).json({ error: 'Review not found' });
     }
 
+    // is_new: no earlier finding (in another review) shares this
+    // fingerprint - i.e. this PR introduced it rather than repeated it.
     const findingsResult = await query(
-      `SELECT f.*, fp.occurrence_count, fp.status AS fingerprint_status, fp.first_detected_at
+      `SELECT f.*, fp.occurrence_count, fp.status AS fingerprint_status, fp.first_detected_at,
+              NOT EXISTS (
+                SELECT 1 FROM findings prev
+                WHERE prev.fingerprint_id = f.fingerprint_id
+                  AND prev.review_id <> f.review_id
+                  AND prev.id < f.id
+              ) AS is_new
        FROM findings f
        LEFT JOIN finding_fingerprints fp ON f.fingerprint_id = fp.id
-       WHERE f.review_id = $1`,
+       WHERE f.review_id = $1
+       ORDER BY f.id`,
       [id]
     );
+
+    const resolvedResult = await query(
+      `SELECT id, file_path, category, representative_title
+       FROM finding_fingerprints
+       WHERE resolved_by_review_id = $1 AND status = 'resolved'`,
+      [id]
+    );
+
+    const prResult = await query('SELECT number, title, author_username FROM pull_requests WHERE id = $1', [
+      review.pull_request_id,
+    ]);
+    const pr = prResult.rows[0] || {};
 
     res.json({
       reviewId: review.id,
       status: review.status,
       model: review.model,
       partialAnalysis: review.partial_analysis,
+      skippedFiles: review.skipped_files || [],
       errorMessage: review.error_message,
+      createdAt: review.created_at,
+      completedAt: review.completed_at,
+      owner: review.repository_owner,
+      repo: review.repository_name,
+      pullRequest: { number: pr.number, title: pr.title, author: pr.author_username },
       findings: findingsResult.rows,
+      resolvedIssues: resolvedResult.rows,
     });
   } catch (err) {
     if (err.response && err.response.status === 401) {
