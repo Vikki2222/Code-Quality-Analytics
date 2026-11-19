@@ -12,12 +12,13 @@ const logger = require('../config/logger');
  * (002_..., 003_...) - never edit an applied one.
  */
 const MIGRATIONS_DIR = path.join(__dirname, '..', 'migrations');
+const MIGRATION_NAME = /^\d{3}_[a-z0-9_]+\.sql$/;
 
 // Arbitrary fixed key: the advisory lock stops two processes booting at
 // once (e.g. a rolling deploy) from applying the same migration twice.
 const MIGRATION_LOCK_KEY = 72_635_401;
 
-async function runMigrations(pool) {
+async function runMigrations(pool, { dir = MIGRATIONS_DIR } = {}) {
   const client = await pool.connect();
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
@@ -30,14 +31,17 @@ async function runMigrations(pool) {
 
     const appliedResult = await client.query('SELECT name FROM schema_migrations');
     const applied = new Set(appliedResult.rows.map((r) => r.name));
-    const files = fs
-      .readdirSync(MIGRATIONS_DIR)
-      .filter((f) => f.endsWith('.sql'))
-      .sort();
+    const sqlFiles = fs.readdirSync(dir).filter((f) => f.endsWith('.sql'));
+    // Strict names only: file-sync tools leave copies like
+    // "001_initial_schema 2.sql", which would otherwise run as a migration.
+    const files = sqlFiles.filter((f) => MIGRATION_NAME.test(f)).sort();
+    for (const ignored of sqlFiles.filter((f) => !MIGRATION_NAME.test(f))) {
+      logger.warn({ file: ignored }, 'Ignoring .sql file that is not named NNN_description.sql');
+    }
 
     for (const file of files) {
       if (applied.has(file)) continue;
-      const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), 'utf8');
+      const sql = fs.readFileSync(path.join(dir, file), 'utf8');
       try {
         await client.query('BEGIN');
         await client.query(sql);

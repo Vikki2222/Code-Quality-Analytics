@@ -78,4 +78,18 @@ describe('analyzeDiff', () => {
     const userMessage = mockCreate.mock.calls[0][0].messages[1].content;
     expect(userMessage).toContain('### File: src/a.js (modified)');
   });
+
+  test('uses one pinned model at temperature 0 so re-reviews are comparable', async () => {
+    mockCreate.mockResolvedValue({ choices: [{ message: { content: '{"findings": []}' } }] });
+    await analyzeDiff(FILES);
+    const request = mockCreate.mock.calls[0][0];
+    expect(request.model).not.toBe('openrouter/free');
+    expect(request.temperature).toBe(0);
+  });
+
+  test('records the model that actually answered', async () => {
+    mockCreate.mockResolvedValue({ model: 'vendor/actual-model', choices: [{ message: { content: '{"findings": []}' } }] });
+    const out = await analyzeDiff(FILES, { model: 'vendor/requested' });
+    expect(out.model).toBe('vendor/actual-model');
+  });
 });

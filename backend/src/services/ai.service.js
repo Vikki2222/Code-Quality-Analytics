@@ -1,8 +1,11 @@
 const OpenAI = require('openai');
 
 // OpenRouter for PR analysis - free tier, no card needed, 50 req/day.
-// openrouter/free spreads across all $0 models automatically.
-// openrouter/auto looks similar but bills variable pricing - don't use it.
+// Pin one model: openrouter/free picks a different $0 model per request,
+// so re-reviewing the same PR gave different findings. Override with
+// AI_MODEL (any ":free" id from openrouter.ai/models).
+// openrouter/auto bills variable pricing - don't use it.
+const DEFAULT_MODEL = process.env.AI_MODEL || 'google/gemma-4-31b-it:free';
 const client = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: 'https://openrouter.ai/api/v1',  // with /v1
@@ -68,7 +71,7 @@ severity must be one of: ${VALID_SEVERITIES.join(', ')}`;
  * No response_format enforcement - not all free models support it.
  * parseAndValidateFindings handles malformed responses defensively.
  */
-async function analyzeDiff(filesToAnalyze, { model = 'openrouter/free' } = {}) {
+async function analyzeDiff(filesToAnalyze, { model = DEFAULT_MODEL } = {}) {
   const diffText = filesToAnalyze
     .map((file) => `### File: ${file.filename} (${file.status})\n${file.patch}`)
     .join('\n\n');
@@ -79,7 +82,9 @@ async function analyzeDiff(filesToAnalyze, { model = 'openrouter/free' } = {}) {
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: diffText },
     ],
-    temperature: 0.2,
+    // Deterministic as the provider allows, so the same diff gives the same findings.
+    temperature: 0,
+    seed: 42,
   });
 
   // Free models sometimes return no choices or null content (e.g. a
@@ -88,7 +93,8 @@ async function analyzeDiff(filesToAnalyze, { model = 'openrouter/free' } = {}) {
   if (!raw) {
     throw new Error(`AI returned an empty response (model: ${response.model || model})`);
   }
-  return parseAndValidateFindings(raw, model);
+  // Record the model that actually answered, not just the one requested.
+  return parseAndValidateFindings(raw, response.model || model);
 }
 
 function parseAndValidateFindings(raw, model) {

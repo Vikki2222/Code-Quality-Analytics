@@ -15,6 +15,7 @@ const authRoutes = require('./routes/auth.routes');
 const githubRoutes = require('./routes/github.routes');
 const reviewRoutes = require('./routes/review.routes');
 const analyticsRoutes = require('./routes/analytics.routes');
+const reposRoutes = require('./routes/repos.routes');
 const webhookRoutes = require('./routes/webhook.routes');
 const { pool } = require('./config/db');
 const { reviewQueue } = require('./queues/review.queue');
@@ -75,7 +76,10 @@ app.use('/api/webhooks', webhookRoutes);
 // in order, and a router that responds never reaches anything after it.
 app.use('/api/', apiLimiter);
 app.post('/api/reviews', reviewLimiter); // only creation costs AI calls; polling GETs must not hit this
-app.use('/api/auth', authLimiter);
+// Only the OAuth flow (/github and /github/callback). /auth/me runs on every
+// page load as a session check; under this tight limit, normal browsing hit
+// 429 and the app treated it as signed out.
+app.use('/api/auth/github', authLimiter);
 
 app.use(express.json());
 
@@ -140,6 +144,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/github', githubRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/repos', reposRoutes);
 
 app.use((err, req, res, next) => {
   logger.error(

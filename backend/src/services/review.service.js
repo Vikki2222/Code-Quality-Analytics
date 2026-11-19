@@ -2,6 +2,8 @@ const { query, withTransaction } = require('../config/db');
 const githubService = require('./github.service');
 const aiService = require('./ai.service');
 const { fingerprintFinding, markResolvedFindings } = require('./fingerprint.service');
+const { recordHealthSnapshot } = require('./analytics.service');
+const logger = require('../config/logger');
 const { buildReviewPayload } = require('../utils/diffBudget');
 
 async function createReview({ userId, accessToken, owner, repo, pullNumber }) {
@@ -21,7 +23,7 @@ async function createReview({ userId, accessToken, owner, repo, pullNumber }) {
 
     const detectedFingerprintIds = await insertFindings(reviewId, pullRequestId, findings, owner, repo);
     const analyzedFilePaths = [...new Set(filesToAnalyze.map((f) => f.filename))];
-    await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds });
+    await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds, reviewId });
 
     await completeReview(reviewId, { model, partialAnalysis, skippedFiles });
 
@@ -54,6 +56,7 @@ async function processQueuedReview({ reviewId, userId, accessToken, owner, repo,
 
     if (filesToAnalyze.length === 0) {
       await completeReview(reviewId, { model: null, partialAnalysis: true, skippedFiles });
+      await snapshotHealth(owner, repo, reviewId);
       return;
     }
 
@@ -65,12 +68,24 @@ async function processQueuedReview({ reviewId, userId, accessToken, owner, repo,
     await withTransaction(async (client) => {
       const detectedFingerprintIds = await insertFindings(reviewId, pullRequestId, findings, owner, repo, client);
       const analyzedFilePaths = [...new Set(filesToAnalyze.map((f) => f.filename))];
-      await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds }, client);
+      await markResolvedFindings({ owner, repo, analyzedFilePaths, detectedFingerprintIds, reviewId }, client);
       await completeReview(reviewId, { model, partialAnalysis, skippedFiles }, client);
     });
+    await snapshotHealth(owner, repo, reviewId);
   } catch (err) {
     if (isFinalAttempt) await failReview(reviewId, err.message);
     throw err;
+  }
+}
+
+// Health history feeds the Portfolio's week-over-week change. Recorded
+// after commit (so it sees this review's findings); a failure here must
+// not fail an otherwise completed review.
+async function snapshotHealth(owner, repo, reviewId) {
+  try {
+    await recordHealthSnapshot(owner, repo, reviewId);
+  } catch (err) {
+    logger.warn({ err, reviewId, owner, repo }, 'Failed to record health snapshot');
   }
 }
 

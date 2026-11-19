@@ -1,14 +1,18 @@
 import { Component } from 'react';
-import StatusMessage from './StatusMessage';
+import { StatusMessage } from './ui/StatusMessage';
 
 // Without a boundary, one render error (e.g. an unexpected API shape)
-// unmounts the whole app to a blank page. Give it a `key` that changes on
-// navigation so the next view gets a fresh boundary.
+// unmounts the whole app to a blank page. When `resetKey` changes (e.g. the
+// route), a previous error is cleared so the next page renders normally.
 export default class ErrorBoundary extends Component {
-  state = { error: null };
+  state = { error: null, resetKey: this.props.resetKey };
 
   static getDerivedStateFromError(error) {
     return { error };
+  }
+
+  static getDerivedStateFromProps(props, state) {
+    return props.resetKey !== state.resetKey ? { error: null, resetKey: props.resetKey } : null;
   }
 
   componentDidCatch(error, info) {
@@ -18,8 +22,8 @@ export default class ErrorBoundary extends Component {
   render() {
     if (this.state.error) {
       return (
-        <StatusMessage tone="error" onRetry={() => window.location.reload()}>
-          Something went wrong displaying this page.
+        <StatusMessage tone="error" title="Something went wrong displaying this page" onRetry={() => window.location.reload()}>
+          If this keeps happening after a reload, the app may have just been updated.
         </StatusMessage>
       );
     }
